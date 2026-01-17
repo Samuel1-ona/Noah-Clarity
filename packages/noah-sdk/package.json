@@ -1,11 +1,16 @@
 {
-  "name": "@noah-v2/sdk",
+  "name": "noah-clarity",
   "version": "0.1.0",
   "description": "TypeScript SDK for Noah-v2 KYC system on Stacks",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "test": "jest",
     "test:local": "ts-node test-local.ts",
     "lint": "eslint src --ext .ts"
@@ -15,10 +20,18 @@
     "kyc",
     "zero-knowledge",
     "zk-proof",
-    "clarity"
+    "clarity",
+    "blockchain",
+    "privacy",
+    "identity"
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Samuel1-ona/Noah-Clarity.git",
+    "directory": "packages/noah-sdk"
+  },
   "dependencies": {
     "@stacks/connect": "^6.0.0",
     "@stacks/network": "^6.17.0",

@@ -1,0 +1,31 @@
+# Source files (not needed in published package)
+src/
+*.ts
+!*.d.ts
+
+# Test files
+test-local.ts
+*.test.ts
+*.spec.ts
+__tests__/
+
+# Development files
+tsconfig.json
+.env
+.env.example
+.gitignore
+
+# Documentation (optional - can include README)
+# docs/
+
+# Build tools
+node_modules/
+.eslintrc*
+.prettierrc*
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+

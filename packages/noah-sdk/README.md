@@ -5,7 +5,7 @@ TypeScript/JavaScript SDK for integrating Noah-v2 KYC system into Stacks protoco
 ## Installation
 
 ```bash
-npm install @noah-v2/sdk
+npm install noah-clarity
 ```
 
 ## Usage
@@ -13,7 +13,7 @@ npm install @noah-v2/sdk
 ### Basic Setup
 
 ```typescript
-import { NoahSDK } from '@noah-v2/sdk';
+import { NoahSDK } from 'noah-clarity';
 
 const sdk = new NoahSDK(
   {
