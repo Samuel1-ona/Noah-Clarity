@@ -28,11 +28,18 @@ export class ProofService {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`Proof generation failed: ${error.error || response.statusText}`);
+      let errorMessage = response.statusText;
+      try {
+        const errorData = await response.json();
+        errorMessage = (errorData as { error?: string }).error || errorMessage;
+      } catch {
+        // If response is not JSON, use statusText
+      }
+      throw new Error(`Proof generation failed: ${errorMessage}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    return data as ProofResponse;
   }
 
   /**
@@ -50,11 +57,18 @@ export class ProofService {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`Attestation failed: ${error.error || response.statusText}`);
+      let errorMessage = response.statusText;
+      try {
+        const errorData = await response.json();
+        errorMessage = (errorData as { error?: string }).error || errorMessage;
+      } catch {
+        // If response is not JSON, use statusText
+      }
+      throw new Error(`Attestation failed: ${errorMessage}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    return data as AttestationResponse;
   }
 
   /**

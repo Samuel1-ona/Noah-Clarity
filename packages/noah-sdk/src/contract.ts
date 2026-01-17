@@ -7,17 +7,14 @@ import {
   broadcastTransaction,
   AnchorMode,
   PostConditionMode,
-  ClarityValue,
   bufferCV,
   uintCV,
   principalCV,
-  contractPrincipalCV,
-  ResponseError,
   getAddressFromPrivateKey,
-  StacksNetwork,
-  StacksTestnet,
-  StacksMainnet,
+  cvToJSON,
+  callReadOnlyFunction,
 } from '@stacks/transactions';
+import { StacksNetwork, StacksTestnet, StacksMainnet } from '@stacks/network';
 import { SDKConfig, KYCStatus, RegisterKYCParams } from './types';
 
 export class KYCContract {
@@ -52,16 +49,17 @@ export class KYCContract {
   ): Promise<string> {
     const senderAddress = getAddressFromPrivateKey(privateKey, this.network.version);
 
+    const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
+
     const functionArgs = [
       bufferCV(Buffer.from(params.commitment.replace('0x', ''), 'hex')),
       bufferCV(Buffer.from(params.signature.replace('0x', ''), 'hex')),
       uintCV(params.attesterId),
-      uintCV(params.expiry),
     ];
 
     const txOptions = {
-      contractAddress: this.getContractAddress(this.config.kycRegistryAddress),
-      contractName: 'kyc-registry',
+      contractAddress: address,
+      contractName: name,
       functionName: 'register-kyc',
       functionArgs,
       senderKey: privateKey,
@@ -76,10 +74,10 @@ export class KYCContract {
       const broadcastResponse = await broadcastTransaction(transaction, this.network);
       return broadcastResponse.txid;
     } catch (error) {
-      if (error instanceof ResponseError) {
+      if (error instanceof Error) {
         throw new Error(`Transaction failed: ${error.message}`);
       }
-      throw error;
+      throw new Error(`Transaction failed: ${String(error)}`);
     }
   }
 
@@ -89,28 +87,42 @@ export class KYCContract {
    * @returns KYC status
    */
   async hasKYC(userPrincipal: string): Promise<KYCStatus> {
-    // This would use a read-only function call
-    // For now, return a placeholder
-    // In production, use @stacks/network to call read-only functions
-    return {
-      hasKYC: false,
-    };
+    const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
+
+    try {
+      const result = await callReadOnlyFunction({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'has-kyc?',
+        functionArgs: [principalCV(userPrincipal)],
+        network: this.network,
+        senderAddress: address, // Use contract address as sender for read-only calls
+      });
+
+      const jsonResult = cvToJSON(result);
+      
+      // Result is (ok bool), so check if it's ok and the value is true
+      if (jsonResult.type === 'responseOk') {
+        const hasKYC = jsonResult.value.value === true;
+        return { hasKYC };
+      } else {
+        return { hasKYC: false };
+      }
+    } catch (error) {
+      console.error('Error checking KYC status:', error);
+      return { hasKYC: false };
+    }
   }
 
   /**
-   * Check if KYC is valid (not expired)
+   * Check if KYC is valid
+   * Since KYC records don't expire, this is equivalent to hasKYC
    * @param userPrincipal User's Stacks principal
    * @returns true if KYC is valid
    */
   async isKYCValid(userPrincipal: string): Promise<boolean> {
     const status = await this.hasKYC(userPrincipal);
-    if (!status.hasKYC || !status.expiry) {
-      return false;
-    }
-
-    // Check if expiry is in the future
-    // In production, compare with current block height
-    return status.expiry > Date.now() / 1000;
+    return status.hasKYC;
   }
 
   /**
@@ -119,17 +131,45 @@ export class KYCContract {
    * @returns KYC details or null
    */
   async getKYC(userPrincipal: string): Promise<KYCStatus | null> {
-    const status = await this.hasKYC(userPrincipal);
-    return status.hasKYC ? status : null;
+    const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
+
+    try {
+      const result = await callReadOnlyFunction({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'get-kyc',
+        functionArgs: [principalCV(userPrincipal)],
+        network: this.network,
+        senderAddress: address,
+      });
+
+      const jsonResult = cvToJSON(result);
+      
+      // Result is (ok (some kyc-record)) or (ok none)
+      if (jsonResult.type === 'responseOk' && jsonResult.value.type === 'optionalSome') {
+        const record = jsonResult.value.value.value;
+        return {
+          hasKYC: true,
+          commitment: record.commitment?.value,
+          attesterId: record['attester-id']?.value,
+          registeredAt: record['registered-at']?.value,
+        };
+      } else {
+        return null;
+      }
+    } catch (error) {
+      console.error('Error getting KYC details:', error);
+      return null;
+    }
   }
 
   /**
-   * Extract contract address and name from a contract identifier
+   * Parse contract address from contract identifier (e.g., "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.kyc-registry")
    */
-  private getContractAddress(contractId: string): { address: string; name: string } {
+  private parseContractAddress(contractId: string): { address: string; name: string } {
     const parts = contractId.split('.');
     if (parts.length !== 2) {
-      throw new Error(`Invalid contract address format: ${contractId}`);
+      throw new Error(`Invalid contract address format: ${contractId}. Expected format: ADDRESS.contract-name`);
     }
     return {
       address: parts[0],

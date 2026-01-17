@@ -45,5 +45,5 @@ if (!isValid) {
 }
 ```
 
-See `src/examples/` for more complete examples.
+Examples and integration patterns will be available when the SDK is fully implemented.
 

@@ -4,16 +4,15 @@
 
 export interface KYCStatus {
   hasKYC: boolean;
-  expiry?: number;
   commitment?: string;
   attesterId?: number;
+  registeredAt?: number;
 }
 
 export interface RegisterKYCParams {
   commitment: string;
   signature: string;
   attesterId: number;
-  expiry: number;
 }
 
 export interface ProofRequest {
@@ -47,7 +46,6 @@ export interface AttestationResponse {
   commitment: string;
   signature: string;
   attester_id: number;
-  expiry: number;
   success: boolean;
   error?: string;
 }
@@ -58,5 +56,11 @@ export interface SDKConfig {
   proverServiceUrl?: string;
   attesterServiceUrl?: string;
   network?: 'mainnet' | 'testnet' | 'devnet';
+}
+
+export interface WalletConfig {
+  appName: string;
+  appIcon?: string;
+  redirectPath?: string;
 }
 

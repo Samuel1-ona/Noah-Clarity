@@ -2,13 +2,8 @@
  * Wallet integration helpers
  */
 
-import { AppConfig, UserSession } from '@stacks/connect';
-
-export interface WalletConfig {
-  appName: string;
-  appIcon?: string;
-  redirectPath?: string;
-}
+import { UserSession } from '@stacks/connect';
+import { WalletConfig } from './types';
 
 export class WalletHelper {
   private config: WalletConfig;
@@ -18,14 +13,10 @@ export class WalletHelper {
   }
 
   /**
-   * Get Stacks Connect app configuration
+   * Get app name
    */
-  getAppConfig(): AppConfig {
-    return {
-      appName: this.config.appName,
-      appIcon: this.config.appIcon || window.location.origin + '/logo.png',
-      redirectPath: this.config.redirectPath || '/',
-    };
+  getAppName(): string {
+    return this.config.appName;
   }
 
   /**
@@ -42,7 +33,8 @@ export class WalletHelper {
     if (!this.isAuthenticated(session)) {
       return null;
     }
-    return session.loadUserData().profile.stxAddress.mainnet || session.loadUserData().profile.stxAddress.testnet;
+    const userData = session!.loadUserData();
+    return userData.profile.stxAddress.mainnet || userData.profile.stxAddress.testnet;
   }
 }
 

@@ -61,7 +61,6 @@ export class NoahSDK {
       commitment: attestationResponse.commitment,
       signature: attestationResponse.signature,
       attesterId: attestationResponse.attester_id,
-      expiry: attestationResponse.expiry,
     }, privateKey);
 
     return txId;
