@@ -22,7 +22,7 @@ export interface ProofResponse {
   error?: string;
 }
 
-const PROVER_SERVICE_URL = process.env.REACT_APP_PROVER_URL || 'http://localhost:8080';
+const PROVER_SERVICE_URL = import.meta.env.VITE_PROVER_URL || 'http://localhost:8080';
 
 export async function generateProof(request: ProofRequest): Promise<ProofResponse> {
   const response = await fetch(`${PROVER_SERVICE_URL}/proof/generate`, {

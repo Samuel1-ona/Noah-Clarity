@@ -5,20 +5,27 @@
 import { AppConfig, showConnect, UserSession } from '@stacks/connect';
 import { StacksTestnet, StacksMainnet } from '@stacks/network';
 
-export const appConfig: AppConfig = {
-  appName: 'Noah-v2 KYC Demo',
-  appIcon: window.location.origin + '/logo.png',
-  redirectPath: '/',
-};
+function getAppConfig(): AppConfig {
+  return {
+    appName: 'Noah-v2 Vault',
+    appIcon: `${window.location.origin}/vite.svg`,
+    redirectPath: '/',
+  };
+}
 
 export function getNetwork() {
-  const network = process.env.REACT_APP_NETWORK || 'testnet';
+  const network = import.meta.env.VITE_NETWORK || 'testnet';
   return network === 'mainnet' ? new StacksMainnet() : new StacksTestnet();
 }
 
 export function connectWallet() {
+  const appConfig = getAppConfig();
   showConnect({
-    appDetails: appConfig,
+    appDetails: {
+      name: appConfig.appName,
+      icon: appConfig.appIcon,
+      redirectPath: appConfig.redirectPath,
+    },
     onFinish: () => {
       window.location.reload();
     },
@@ -26,7 +33,7 @@ export function connectWallet() {
 }
 
 export function getUserSession(): UserSession | null {
-  const session = new UserSession({ appConfig });
+  const session = new UserSession({ appConfig: getAppConfig() });
   return session.isUserSignedIn() ? session : null;
 }
 

@@ -147,3 +147,109 @@ footer {
   font-size: 14px;
 }
 
+
+/* Vault Component Styles */
+.vault-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.kyc-required {
+  background-color: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+}
+
+.kyc-required h2 {
+  color: #856404;
+  margin-bottom: 1rem;
+}
+
+.balance-section {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.balance-amount {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #28a745;
+  margin: 0.5rem 0;
+}
+
+.vault-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.deposit-section,
+.withdraw-section {
+  background-color: #ffffff;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.deposit-section h3,
+.withdraw-section h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.deposit-section input,
+.withdraw-section input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  box-sizing: border-box;
+}
+
+.deposit-section button,
+.withdraw-section button {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.deposit-section button:hover:not(:disabled),
+.withdraw-section button:hover:not(:disabled) {
+  background-color: #0056b3;
+}
+
+.deposit-section button:disabled,
+.withdraw-section button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.error-message {
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  color: #721c24;
+}
+
+@media (max-width: 768px) {
+  .vault-actions {
+    grid-template-columns: 1fr;
+  }
+}

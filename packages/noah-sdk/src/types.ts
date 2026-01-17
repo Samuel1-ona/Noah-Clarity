@@ -64,3 +64,13 @@ export interface WalletConfig {
   redirectPath?: string;
 }
 
+/**
+ * Protocol-specific KYC requirements
+ * Protocols define these requirements off-chain (e.g., in JSON/metadata)
+ */
+export interface ProtocolRequirements {
+  min_age: number;
+  allowed_jurisdictions: number[];
+  require_accreditation: boolean;
+}
+

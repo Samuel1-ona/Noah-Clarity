@@ -2,7 +2,7 @@
  * Proof generation and verification utilities
  */
 
-import { ProofRequest, ProofResponse, AttestationRequest, AttestationResponse, SDKConfig } from './types';
+import { ProofRequest, ProofResponse, AttestationRequest, AttestationResponse, SDKConfig, ProtocolRequirements } from './types';
 
 export class ProofService {
   private proverServiceUrl: string;
@@ -72,19 +72,43 @@ export class ProofService {
   }
 
   /**
-   * Verify a proof (off-chain verification)
-   * Note: This is a placeholder - actual verification would use the verification key
-   * @param proof Serialized proof
-   * @param publicInputs Public inputs
-   * @returns true if proof is valid
+   * Generate a proof matching protocol-specific requirements
+   * 
+   * Takes user credential data and protocol requirements, then constructs
+   * a ProofRequest with protocol requirements as public inputs.
+   * 
+   * @param userCredential User's credential data (private inputs)
+   * @param protocolRequirements Protocol's KYC requirements (public inputs)
+   * @returns Proof response with proof and public inputs
    */
-  async verifyProof(proof: string, publicInputs: string[]): Promise<boolean> {
-    // In production, this would:
-    // 1. Deserialize the proof
-    // 2. Load the verification key
-    // 3. Verify using gnark or similar library
-    // For now, return true as a placeholder
-    return true;
+  async generateProofForProtocol(
+    userCredential: {
+      age: string;
+      jurisdiction: string;
+      is_accredited: string;
+      identity_data: string;
+      nonce: string;
+    },
+    protocolRequirements: ProtocolRequirements
+  ): Promise<ProofResponse> {
+    // Construct ProofRequest with protocol requirements as public inputs
+    const proofRequest: ProofRequest = {
+      // Private inputs (user's actual credential data)
+      age: userCredential.age,
+      jurisdiction: userCredential.jurisdiction,
+      is_accredited: userCredential.is_accredited,
+      identity_data: userCredential.identity_data,
+      nonce: userCredential.nonce,
+      
+      // Public inputs (protocol requirements)
+      min_age: protocolRequirements.min_age.toString(),
+      allowed_jurisdictions: protocolRequirements.allowed_jurisdictions.map(j => j.toString()),
+      require_accreditation: protocolRequirements.require_accreditation ? '1' : '0',
+      commitment: '', // Will be computed by prover service
+    };
+
+    // Generate proof using existing method
+    return await this.generateProof(proofRequest);
   }
 }
 
