@@ -47,9 +47,27 @@ func (api *API) GenerateProof(c *gin.Context) {
 	// Generate proof
 	response, err := api.circuitManager.GenerateProof(&req)
 	if err != nil {
+		// Log the error for debugging
+		fmt.Printf("ERROR: GenerateProof failed: %v\n", err)
+		if response != nil && response.Error != "" {
+			fmt.Printf("ERROR: Response error: %s\n", response.Error)
+			c.JSON(http.StatusInternalServerError, ProofResponse{
+				Success: false,
+				Error:   "Proof generation failed: " + response.Error,
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, ProofResponse{
+				Success: false,
+				Error:   "Proof generation failed: " + err.Error(),
+			})
+		}
+		return
+	}
+	if response != nil && !response.Success {
+		fmt.Printf("ERROR: Proof generation returned failure: %s\n", response.Error)
 		c.JSON(http.StatusInternalServerError, ProofResponse{
 			Success: false,
-			Error:   "Proof generation failed: " + err.Error(),
+			Error:   response.Error,
 		})
 		return
 	}

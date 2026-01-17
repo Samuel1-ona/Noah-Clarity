@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 
@@ -36,9 +37,18 @@ func NewCircuitManager() *CircuitManager {
 // Initialize compiles the circuit and loads/generates keys
 func (cm *CircuitManager) Initialize() error {
 	// Compile the circuit
+	// Note: gnark requires fixed-size arrays for compilation
+	// We use a reasonable maximum (e.g., 250 jurisdictions as discussed)
+	// The actual number used in proofs can be less than this
+	maxJurisdictions := 250
+	allowedJurisdictions := make([]frontend.Variable, maxJurisdictions)
+	for i := range allowedJurisdictions {
+		allowedJurisdictions[i] = 0 // Placeholder values for compilation
+	}
+	
 	kycCircuit := &circuit.KYCCircuit{
 		MinAge:               0, // Placeholder, will be set per request
-		AllowedJurisdictions: []frontend.Variable{},
+		AllowedJurisdictions: allowedJurisdictions,
 		RequireAccreditation: 0,
 		Commitment:           0,
 	}
@@ -121,6 +131,31 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 	}
 
 	// Create witness from request
+	// The circuit was compiled with maxJurisdictions (250), so we need to pad
+	// the AllowedJurisdictions array to match the compiled structure
+	maxJurisdictions := 250
+	allowedJurisdictions := make([]frontend.Variable, maxJurisdictions)
+	
+	// Copy the provided jurisdictions
+	for i := range allowedJurisdictions {
+		if i < len(req.AllowedJurisdictions) {
+			allowedJurisdictions[i] = req.AllowedJurisdictions[i]
+		} else {
+			// Pad with 0 for unused slots (circuit uses len() so padding won't affect logic)
+			allowedJurisdictions[i] = big.NewInt(0)
+		}
+	}
+	
+	// Compute the commitment from identity data and nonce (matches circuit logic)
+	// The circuit computes: MiMC(IdentityData || Nonce)
+	computedCommitment, err := computeCommitment(req.IdentityData, req.Nonce)
+	if err != nil {
+		return &ProofResponse{
+			Success: false,
+			Error:   fmt.Sprintf("failed to compute commitment: %v", err),
+		}, err
+	}
+	
 	witnessData := &circuit.KYCCircuit{
 		Age:            req.Age,
 		Jurisdiction:   req.Jurisdiction,
@@ -128,19 +163,14 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 		IdentityData:   req.IdentityData,
 		Nonce:          req.Nonce,
 		MinAge:         req.MinAge,
-		AllowedJurisdictions: make([]frontend.Variable, len(req.AllowedJurisdictions)),
+		AllowedJurisdictions: allowedJurisdictions,
 		RequireAccreditation: req.RequireAccreditation,
-		Commitment:     req.Commitment,
+		Commitment:     computedCommitment, // Use computed commitment instead of provided one
 		AgeVerified:    1, // Will be computed by circuit
 		JurisdictionVerified: 1,
 		AccreditationVerified: 1,
 		IdentityVerified: 1,
 		OverallVerified: 1,
-	}
-
-	// Convert allowed jurisdictions
-	for i, j := range req.AllowedJurisdictions {
-		witnessData.AllowedJurisdictions[i] = j
 	}
 
 	// Create full witness (with both private and public inputs)
@@ -199,8 +229,8 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 	// Add RequireAccreditation
 	publicInputs = append(publicInputs, req.RequireAccreditation.Text(16))
 	
-	// Add Commitment
-	publicInputs = append(publicInputs, req.Commitment.Text(16))
+	// Add Commitment (use computed commitment)
+	publicInputs = append(publicInputs, computedCommitment.Text(16))
 	
 	// Note: Verification result outputs (AgeVerified, etc.) are also public outputs
 	// but are computed by the circuit, not provided as inputs
@@ -210,7 +240,7 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 	return &ProofResponse{
 		Proof:        proofBytes, // Base64 encoded binary proof
 		PublicInputs: publicInputs,
-		Commitment:   req.Commitment.Text(16),
+		Commitment:   computedCommitment.Text(16), // Use computed commitment
 		Success:      true,
 	}, nil
 }
