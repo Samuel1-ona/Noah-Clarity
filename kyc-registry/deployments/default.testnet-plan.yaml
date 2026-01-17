@@ -1,0 +1,39 @@
+---
+id: 0
+name: Testnet deployment
+network: testnet
+stacks-node: "https://api.testnet.hiro.so"
+bitcoin-node: "http://blockstack:blockstacksystem@bitcoind.testnet.stacks.co:18332"
+plan:
+  batches:
+    - id: 0
+      transactions:
+        - contract-publish:
+            contract-name: attester-registry
+            expected-sender: STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS
+            cost: 36970
+            path: contracts/attester-registry.clar
+            anchor-block-only: true
+            clarity-version: 3
+        - contract-publish:
+            contract-name: attester-registry-trait
+            expected-sender: STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS
+            cost: 2260
+            path: contracts/attester-registry-trait.clar
+            anchor-block-only: true
+            clarity-version: 3
+        - contract-publish:
+            contract-name: kyc-registry
+            expected-sender: STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS
+            cost: 56890
+            path: contracts/kyc-registry.clar
+            anchor-block-only: true
+            clarity-version: 3
+        - contract-publish:
+            contract-name: revocation
+            expected-sender: STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS
+            cost: 32480
+            path: contracts/revocation.clar
+            anchor-block-only: true
+            clarity-version: 3
+      epoch: "3.2"

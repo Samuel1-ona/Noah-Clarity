@@ -19,9 +19,25 @@
 (define-constant ERR_INVALID_COMMITMENT (err u2005))
 
 ;; Register KYC for a user
-;; commitment: 32-byte commitment hash
-;; signature: 65-byte ECDSA signature (r || s || v)
-;; attester-id: ID of the attester who signed
+;; Stores a user's KYC commitment after verifying the attestation signature
+;; KYC records are permanent until explicitly revoked by the contract owner
+;; 
+;; @param commitment - 32-byte hash commitment of user's identity data (SHA-256 hash)
+;; @param signature - 65-byte ECDSA signature (r || s || v format) from the attester
+;; @param attester-id - Unique identifier of the attester who issued this KYC
+;; @return (ok true) on successful registration
+;; @error ERR_INVALID_COMMITMENT (u2005) - If commitment length is not 32 bytes
+;; @error ERR_INVALID_SIGNATURE (u2002) - If signature length is not 65 bytes or signature verification fails
+;; @error ERR_INVALID_ATTESTER (u2001) - If attester does not exist or is inactive
+;; 
+;; Side effects:
+;; - Creates or updates KYC record for tx-sender
+;; - Stores commitment, attester-id, and registration block height
+;; 
+;; Security:
+;; - Verifies attester is active before accepting the signature
+;; - Cryptographically verifies signature using secp256k1-verify
+;; - Prevents users from registering invalid or unauthorized KYC credentials
 (define-public (register-kyc (commitment (buff 32)) (signature (buff 65)) (attester-id uint))
   (begin
     ;; Verify commitment length
@@ -52,8 +68,14 @@
   )
 )
 
-;; Check if user has valid KYC
-;; Returns (ok true) if valid, (ok false) if not found
+;; Check if a user has registered KYC
+;; 
+;; @param user - Stacks principal address of the user to check
+;; @return (ok true) if user has a KYC record in the registry
+;; @return (ok false) if user has no KYC record
+;; 
+;; Note: This function only checks for the existence of a KYC record.
+;; KYC records are permanent and do not expire - they remain valid until revoked.
 (define-read-only (has-kyc? (user principal))
   (match (map-get? kyc-registry { user: user })
     kyc-record (ok true)
@@ -62,6 +84,17 @@
 )
 
 ;; Get KYC details for a user
+;; Returns the full KYC record including commitment, attester-id, and registration timestamp
+;; 
+;; @param user - Stacks principal address of the user
+;; @return (ok (some kyc-record)) - KYC record tuple containing:
+;;   - commitment: (buff 32) - Identity commitment hash
+;;   - attester-id: uint - ID of the attester who issued the KYC
+;;   - registered-at: uint - Block height when KYC was registered
+;; @return (ok none) - If user has no KYC record
+;; 
+;; Use case: Applications can retrieve KYC details to verify which attester issued the credential
+;; and when it was registered
 (define-read-only (get-kyc (user principal))
   (match (map-get? kyc-registry { user: user })
     kyc-record (ok (some kyc-record))
@@ -69,7 +102,15 @@
   )
 )
 
-;; Check if KYC is valid
+;; Check if a user's KYC is valid
+;; 
+;; @param user - Stacks principal address of the user to check
+;; @return (ok true) if user has a valid KYC record
+;; @return (ok false) if user has no KYC record
+;; 
+;; Note: This function is functionally equivalent to has-kyc? since KYC records
+;; do not expire. Both functions return true if a KYC record exists, false otherwise.
+;; This function name provides a more semantic API for applications checking KYC validity.
 (define-read-only (is-kyc-valid? (user principal))
   (match (map-get? kyc-registry { user: user })
     kyc-record (ok true)
@@ -77,7 +118,22 @@
   )
 )
 
-;; Revoke KYC for a user (only contract owner)
+;; Revoke KYC for a user
+;; Only the contract owner can revoke KYC records
+;; Used for compliance, fraud prevention, or when a user's KYC status changes
+;; 
+;; @param user - Stacks principal address of the user whose KYC should be revoked
+;; @return (ok true) on successful revocation
+;; @error ERR_NOT_AUTHORIZED (u2000) - If caller is not the contract owner
+;; @error ERR_KYC_NOT_FOUND (u2003) - If user has no KYC record to revoke
+;; 
+;; Side effects:
+;; - Permanently removes the KYC record from the registry
+;; - User will no longer pass has-kyc? or is-kyc-valid? checks
+;; - User must re-register KYC to restore access
+;; 
+;; Note: Revocation is permanent and cannot be undone automatically.
+;; If needed, the user must go through the full KYC registration process again.
 (define-public (revoke-kyc (user principal))
   (begin
     (asserts! (is-eq tx-sender contract-owner) ERR_NOT_AUTHORIZED)
