@@ -1,6 +1,6 @@
 {
   "name": "noah-clarity",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "TypeScript SDK for Noah-v2 KYC system on Stacks",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

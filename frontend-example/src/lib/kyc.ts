@@ -35,7 +35,11 @@ export async function checkKYCStatus(userAddress: string) {
  * Check if KYC is valid
  */
 export async function isKYCValid(userAddress: string): Promise<boolean> {
-  return await sdk.contract.isKYCValid(userAddress);
+  console.log('isKYCValid called with address:', userAddress);
+  console.log('SDK config kycRegistryAddress:', SDK_CONFIG.kycRegistryAddress);
+  const result = await sdk.contract.isKYCValid(userAddress);
+  console.log('isKYCValid result:', result);
+  return result;
 }
 
 /**

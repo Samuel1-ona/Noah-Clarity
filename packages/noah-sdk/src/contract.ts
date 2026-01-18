@@ -48,7 +48,7 @@ export class KYCContract {
     privateKey: string
   ): Promise<string> {
     const senderAddress = getAddressFromPrivateKey(privateKey, this.network.version);
-    
+
     // #region agent log
     console.log('Transaction sender address (derived from private key):', senderAddress);
     console.log('Network version:', this.network.version);
@@ -112,8 +112,8 @@ export class KYCContract {
       // #endregion agent log
       
       try {
-        const broadcastResponse = await broadcastTransaction(transaction, this.network);
-        return broadcastResponse.txid;
+      const broadcastResponse = await broadcastTransaction(transaction, this.network);
+      return broadcastResponse.txid;
       } catch (broadcastError: any) {
         // Log the error immediately with console.error to ensure we see it
         console.error('broadcastTransaction error:', broadcastError);
@@ -269,6 +269,10 @@ export class KYCContract {
   async hasKYC(userPrincipal: string): Promise<KYCStatus> {
     const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
 
+    // #region agent log
+    fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:269','message':'hasKYC called','data':{userPrincipal,contractAddress:this.config.kycRegistryAddress,parsedAddress:address,parsedName:name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion agent log
+
     try {
       const result = await callReadOnlyFunction({
         contractAddress: address,
@@ -279,16 +283,42 @@ export class KYCContract {
         senderAddress: address, // Use contract address as sender for read-only calls
       });
 
+      // #region agent log
+      console.log('hasKYC callReadOnlyFunction result (before cvToJSON):', result);
+      console.log('hasKYC result type:', typeof result);
+      console.log('hasKYC result constructor:', result?.constructor?.name);
+      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:277','message':'hasKYC callReadOnlyFunction result','data':{userPrincipal,resultType:typeof result,resultConstructor:result?.constructor?.name,resultString:String(result)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion agent log
+
       const jsonResult = cvToJSON(result);
       
-      // Result is (ok bool), so check if it's ok and the value is true
-      if (jsonResult.type === 'responseOk') {
-        const hasKYC = jsonResult.value.value === true;
+      // #region agent log
+      console.log('hasKYC raw result (after cvToJSON):', JSON.stringify(jsonResult, null, 2));
+      console.log('hasKYC jsonResult.type:', jsonResult.type);
+      console.log('hasKYC jsonResult.value:', jsonResult.value);
+      console.log('hasKYC jsonResult.value type:', typeof jsonResult.value);
+      console.log('hasKYC jsonResult.success:', jsonResult.success);
+      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:290','message':'hasKYC result after cvToJSON','data':{userPrincipal,resultType:jsonResult.type,resultValue:jsonResult.value,resultValueType:typeof jsonResult.value,resultSuccess:jsonResult.success,fullResult:JSON.stringify(jsonResult)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion agent log
+      
+      // Result is (ok bool), cvToJSON returns:
+      // { type: '(response bool UnknownType)', value: { type: 'bool', value: true }, success: true }
+      // Check success field or response type, then extract boolean from value.value
+      if (jsonResult.success === true || (jsonResult.type && jsonResult.type.includes('response'))) {
+        // Extract the boolean value from the nested structure
+        const boolValue = jsonResult.value?.value;
+        const hasKYC = boolValue === true;
+        console.log('hasKYC final result:', hasKYC, 'jsonResult.value.value:', boolValue, 'type:', typeof boolValue);
         return { hasKYC };
       } else {
+        console.log('hasKYC: response not ok, type:', jsonResult.type, 'success:', jsonResult.success, 'full result:', JSON.stringify(jsonResult));
         return { hasKYC: false };
       }
     } catch (error) {
+      // #region agent log
+      console.error('hasKYC exception:', error);
+      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:294','message':'hasKYC error','data':{userPrincipal,error:error instanceof Error ? error.message : String(error),errorStack:error instanceof Error ? error.stack : undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion agent log
       console.error('Error checking KYC status:', error);
       return { hasKYC: false };
     }
