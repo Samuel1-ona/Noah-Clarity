@@ -32,6 +32,34 @@
   )
 )
 
+;; Update an attester's public key
+;; Only the contract owner can update attesters
+;; Allows changing the public key for an existing attester ID
+;; 
+;; @param pubkey - New compressed secp256k1 public key (33 bytes) for the attester
+;; @param id - Unique identifier of the attester to update
+;; @return (ok true) on success
+;; @error ERR_NOT_AUTHORIZED (u1001) - If caller is not the contract owner
+;; @error ERR_INVALID_PUBKEY (u1004) - If pubkey length is not 33 bytes
+;; @error ERR_ATTESTER_NOT_FOUND (u1003) - If no attester exists with this ID
+;; 
+;; Side effects:
+;; - Updates the pubkey for the specified attester
+;; - Preserves the active status of the attester
+(define-public (update-attester-pubkey (pubkey (buff 33)) (id uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) ERR_NOT_AUTHORIZED)
+    (asserts! (is-eq (len pubkey) u33) ERR_INVALID_PUBKEY)
+    (match (map-get? attester-by-id { id: id })
+      attester (begin
+        (map-set attester-by-id { id: id } { pubkey: pubkey, active: (get active attester) })
+        (ok true)
+      )
+      ERR_ATTESTER_NOT_FOUND
+    )
+  )
+)
+
 ;; Deactivate an attester in the registry
 ;; Only the contract owner can deactivate attesters
 ;; Deactivated attesters cannot issue new KYC credentials

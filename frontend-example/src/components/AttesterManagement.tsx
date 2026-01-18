@@ -16,7 +16,7 @@ import { openContractCall } from '@stacks/connect';
 import { bufferCV, uintCV } from '@stacks/transactions';
 import { getNetwork } from '../lib/stacks';
 
-const ATTESTER_REGISTRY_CONTRACT = import.meta.env.VITE_ATTESTER_REGISTRY || 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.attester-registry';
+const ATTESTER_REGISTRY_CONTRACT = import.meta.env.VITE_ATTESTER_REGISTRY || 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Attester-registry';
 
 export const AttesterManagement: React.FC = () => {
   const attesterServiceUrl = import.meta.env.VITE_ATTESTER_URL || 'http://localhost:8081';
@@ -32,13 +32,28 @@ export const AttesterManagement: React.FC = () => {
     setLoadingInfo(true);
     setError(null);
     try {
-      const response = await fetch(`${attesterServiceUrl}/info`);
-      if (!response.ok) {
+      // First get the public key from backend
+      const infoResponse = await fetch(`${attesterServiceUrl}/info`);
+      if (!infoResponse.ok) {
         throw new Error('Failed to fetch attester info');
       }
-      const data = await response.json();
-      setAttesterId(data.attester_id?.toString() || '1');
-      setPublicKey(data.public_key || '');
+      const infoData = await infoResponse.json();
+      setPublicKey(infoData.public_key || '');
+
+      // Then get the next available ID
+      try {
+        const idResponse = await fetch(`${attesterServiceUrl}/info/next-available-id`);
+        if (idResponse.ok) {
+          const idData = await idResponse.json();
+          setAttesterId(idData.next_available_id?.toString() || infoData.attester_id?.toString() || '1');
+        } else {
+          // Fallback to backend's configured ID
+          setAttesterId(infoData.attester_id?.toString() || '1');
+        }
+      } catch (idErr) {
+        // Fallback to backend's configured ID if next-available-id fails
+        setAttesterId(infoData.attester_id?.toString() || '1');
+      }
     } catch (err: any) {
       setError(`Could not fetch attester info: ${err.message}. Please enter manually.`);
     } finally {

@@ -7,19 +7,23 @@ import (
 
 // Config holds the attester service configuration
 type Config struct {
-	Port            string
-	PrivateKey      string
-	AttesterID      uint
-	VerifyingKeyPath string
+	Port              string
+	PrivateKey        string
+	AttesterID        uint
+	VerifyingKeyPath  string
+	AttesterRegistry  string
+	StacksNetwork     string
 }
 
 // LoadConfig loads configuration from environment variables
 func LoadConfig() *Config {
 	return &Config{
-		Port:            getEnv("ATTESTER_PORT", "8081"),
-		PrivateKey:      getEnv("ATTESTER_PRIVATE_KEY", ""),
-		AttesterID:      uint(getEnvUint("ATTESTER_ID", 1)),
+		Port:             getEnv("ATTESTER_PORT", "8081"),
+		PrivateKey:       getEnv("ATTESTER_PRIVATE_KEY", ""),
+		AttesterID:       uint(getEnvUint("ATTESTER_ID", 1)),
 		VerifyingKeyPath: getEnv("VERIFYING_KEY_PATH", "../prover/keys/verifying.key"),
+		AttesterRegistry: getEnv("ATTESTER_REGISTRY", "STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Attester-registry"),
+		StacksNetwork:    getEnv("STACKS_NETWORK", "testnet"),
 	}
 }
 

@@ -47,14 +47,12 @@
     (asserts! (or (is-eq (len signature) u64) (is-eq (len signature) u65)) ERR_INVALID_SIGNATURE)
     
     ;; Check attester is active
-    (let ((active-result (contract-call? .attester-registry is-attester-active? attester-id)))
-      (asserts! (unwrap-panic active-result) ERR_INVALID_ATTESTER)
-    )
+    (asserts! (unwrap-panic (contract-call? .attester-registry is-attester-active? attester-id)) ERR_INVALID_ATTESTER)
     
     ;; Get attester public key
     (let ((pubkey (unwrap-panic (contract-call? .attester-registry get-attester-pubkey attester-id))))
       ;; Verify signature
-    ;;   (asserts! (secp256k1-verify commitment signature pubkey) ERR_INVALID_SIGNATURE)
+      (asserts! (secp256k1-verify commitment signature pubkey) ERR_INVALID_SIGNATURE)
       
       ;; Store KYC record
       (map-set kyc-registry { user: tx-sender } 
