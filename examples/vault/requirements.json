@@ -1,0 +1,8 @@
+{
+  "min_age": 18,
+  "allowed_jurisdictions": [1, 2, 3],
+  "require_accreditation": false,
+  "description": "Vault protocol KYC requirements",
+  "updated_at": "2024-01-01T00:00:00Z"
+}
+

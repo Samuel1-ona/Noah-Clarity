@@ -85,25 +85,26 @@ func (api *API) HealthCheck(c *gin.Context) {
 
 // validateProofRequest validates the proof request
 func validateProofRequest(req *ProofRequest) error {
-	if req.Age == nil || req.Age.Sign() < 0 {
+	if req.Age.Int == nil || req.Age.Sign() < 0 {
 		return fmt.Errorf("invalid age")
 	}
-	if req.Jurisdiction == nil {
+	if req.Jurisdiction.Int == nil {
 		return fmt.Errorf("invalid jurisdiction")
 	}
-	if req.IdentityData == nil {
+	if req.IdentityData.Int == nil {
 		return fmt.Errorf("invalid identity data")
 	}
-	if req.Nonce == nil {
+	if req.Nonce.Int == nil {
 		return fmt.Errorf("invalid nonce")
 	}
-	if req.MinAge == nil || req.MinAge.Sign() < 0 {
+	if req.MinAge.Int == nil || req.MinAge.Sign() < 0 {
 		return fmt.Errorf("invalid min_age")
 	}
 	if len(req.AllowedJurisdictions) == 0 {
 		return fmt.Errorf("allowed_jurisdictions cannot be empty")
 	}
-	if req.Commitment == nil {
+	// Commitment can be empty (will be computed internally)
+	if req.Commitment.Int == nil {
 		return fmt.Errorf("invalid commitment")
 	}
 	return nil

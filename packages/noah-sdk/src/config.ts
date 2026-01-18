@@ -24,7 +24,7 @@ export const TESTNET_CONTRACTS: ContractAddresses = {
   contracts: {
     'attester-registry': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.attester-registry',
     'attester-registry-trait': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.attester-registry-trait',
-    'kyc-registry': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.kyc-registry',
+    'kyc-registry': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.KYC-registry',
     'revocation': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.revocation',
   },
   deployment_date: '2025-01-17',

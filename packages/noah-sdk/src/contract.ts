@@ -48,12 +48,32 @@ export class KYCContract {
     privateKey: string
   ): Promise<string> {
     const senderAddress = getAddressFromPrivateKey(privateKey, this.network.version);
+    
+    // #region agent log
+    console.log('Transaction sender address (derived from private key):', senderAddress);
+    console.log('Network version:', this.network.version);
+    fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:50','message':'registerKYC entry','data':{senderAddress,network:this.network.coreApiUrl,networkVersion:this.network.version,attesterId:params.attesterId,commitmentLength:params.commitment.length,signatureLength:params.signature.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion agent log
 
     const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
 
+    // Ensure commitment is exactly 32 bytes (64 hex chars)
+    const commitmentHex = params.commitment.replace('0x', '');
+    const commitmentBuffer = Buffer.from(commitmentHex, 'hex');
+    if (commitmentBuffer.length !== 32) {
+      throw new Error(`Invalid commitment length: expected 32 bytes, got ${commitmentBuffer.length}. Hex: ${commitmentHex.substring(0, 20)}...`);
+    }
+
+    // Ensure signature is 64 or 65 bytes (128 or 130 hex chars)
+    const signatureHex = params.signature.replace('0x', '');
+    const signatureBuffer = Buffer.from(signatureHex, 'hex');
+    if (signatureBuffer.length !== 64 && signatureBuffer.length !== 65) {
+      throw new Error(`Invalid signature length: expected 64 or 65 bytes, got ${signatureBuffer.length}. Hex: ${signatureHex.substring(0, 20)}...`);
+    }
+
     const functionArgs = [
-      bufferCV(Buffer.from(params.commitment.replace('0x', ''), 'hex')),
-      bufferCV(Buffer.from(params.signature.replace('0x', ''), 'hex')),
+      bufferCV(commitmentBuffer),
+      bufferCV(signatureBuffer),
       uintCV(params.attesterId),
     ];
 
@@ -63,21 +83,181 @@ export class KYCContract {
       functionName: 'register-kyc',
       functionArgs,
       senderKey: privateKey,
-      fee: 1000,
+      fee: 5000, // Increased from 1000 to 5000 microSTX (0.005 STX) for better reliability
       network: this.network,
       anchorMode: AnchorMode.Any,
       postConditionMode: PostConditionMode.Allow,
     };
 
+    // #region agent log
+    fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:74','message':'Transaction options before makeContractCall','data':{contractAddress:address,contractName:name,functionName:'register-kyc',fee:txOptions.fee,anchorMode:txOptions.anchorMode,postConditionMode:txOptions.postConditionMode,networkUrl:this.network.coreApiUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion agent log
+
     try {
       const transaction = await makeContractCall(txOptions);
-      const broadcastResponse = await broadcastTransaction(transaction, this.network);
-      return broadcastResponse.txid;
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Transaction failed: ${error.message}`);
+      
+      // #region agent log
+      const serializedTx = transaction.serialize();
+      const nonceValue = (transaction as any).auth?.spendingCondition?.nonce;
+      const txData = {
+        txId: transaction.txid(),
+        nonce: typeof nonceValue === 'bigint' ? nonceValue.toString() : nonceValue,
+        serializedTxLength: serializedTx.byteLength,
+      };
+      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:87','message':'Transaction created, before broadcast','data':txData,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion agent log
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:108','message':'About to call broadcastTransaction','data':{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion agent log
+      
+      try {
+        const broadcastResponse = await broadcastTransaction(transaction, this.network);
+        return broadcastResponse.txid;
+      } catch (broadcastError: any) {
+        // Log the error immediately with console.error to ensure we see it
+        console.error('broadcastTransaction error:', broadcastError);
+        // Re-throw to be caught by outer catch block
+        throw broadcastError;
       }
-      throw new Error(`Transaction failed: ${String(error)}`);
+    } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:110','message':'Caught error in registerKYC','data':{errorType:error?.constructor?.name,hasMessage:!!error?.message,message:error?.message?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion agent log
+      
+      // Helper function to safely serialize data (handles BigInt)
+      const safeStringify = (obj: any): string => {
+        try {
+          return JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'bigint') {
+              return value.toString();
+            }
+            return value;
+          });
+        } catch (e) {
+          return String(obj);
+        }
+      };
+      
+      // Helper function to safely extract error data (handles BigInt)
+      const safeExtract = (obj: any): any => {
+        if (obj === null || obj === undefined) return obj;
+        if (typeof obj === 'string') return obj;
+        if (typeof obj === 'bigint') return obj.toString();
+        if (typeof obj !== 'object') return obj;
+        const result: any = {};
+        try {
+          for (const key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+              const value = obj[key];
+              if (typeof value === 'bigint') {
+                result[key] = value.toString();
+              } else if (typeof value === 'object' && value !== null) {
+                result[key] = safeExtract(value);
+              } else {
+                result[key] = value;
+              }
+            }
+          }
+        } catch (e) {
+          return String(obj);
+        }
+        return result;
+      };
+      
+      // #region agent log
+      const errorKeys = error ? Object.keys(error) : [];
+      const errorStructure = {
+        hasError: !!error,
+        hasResponse: !!error?.response,
+        hasData: !!error?.data,
+        hasStatus: !!error?.status,
+        hasStatusText: !!error?.statusText,
+        hasReason: !!error?.reason,
+        hasMessage: !!error?.message,
+        errorKeys: errorKeys,
+        errorType: error?.constructor?.name,
+        status: error?.status,
+        statusText: error?.statusText,
+        message: error?.message,
+      };
+      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:safeStringify({location:'contract.ts:135','message':'Error object structure','data':errorStructure,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion agent log
+      
+      // Capture detailed error information
+      let errorMessage = 'Transaction failed';
+      let errorDetails: any = {};
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        errorDetails.message = error.message;
+      }
+      
+      // Try to extract API response details (safely handle BigInt)
+      if (error?.error) {
+        errorDetails.apiError = typeof error.error === 'string' ? error.error : safeExtract(error.error);
+        errorMessage = typeof error.error === 'string' ? error.error : String(error.error);
+      }
+      if (error?.reason) {
+        errorDetails.reason = typeof error.reason === 'string' ? error.reason : safeExtract(error.reason);
+        errorMessage = typeof error.reason === 'string' ? error.reason : String(error.reason);
+      }
+      if (error?.response) {
+        try {
+          if (typeof error.response === 'string') {
+            errorDetails.response = error.response;
+          } else {
+            errorDetails.response = safeStringify(safeExtract(error.response));
+          }
+        } catch (e) {
+          errorDetails.response = String(error.response);
+        }
+      }
+      if (error?.data) {
+        errorDetails.data = typeof error.data === 'string' ? error.data : safeStringify(safeExtract(error.data));
+      }
+      if (error?.status) errorDetails.status = error.status;
+      if (error?.statusText) errorDetails.statusText = error.statusText;
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:safeStringify({location:'contract.ts:120','message':'Error details captured','data':errorDetails,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion agent log
+      
+      // Try to extract response body if it exists
+      let responseBody = null;
+      if (error?.response?.data) {
+        responseBody = typeof error.response.data === 'string' ? error.response.data : safeExtract(error.response.data);
+      } else if (error?.data) {
+        responseBody = typeof error.data === 'string' ? error.data : safeExtract(error.data);
+      }
+      
+      // #region agent log
+      if (responseBody) {
+        fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:safeStringify({location:'contract.ts:135','message':'API response body','data':{responseBody:typeof responseBody === 'string' ? responseBody : safeStringify(responseBody)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      }
+      // #endregion agent log
+      
+      // Extract error details from response body for user-friendly messages
+      let userFriendlyMessage = errorMessage;
+      if (responseBody && typeof responseBody === 'object') {
+        if (responseBody.reason === 'NotEnoughFunds') {
+          const expected = responseBody.reason_data?.expected;
+          const expectedStx = expected ? (parseInt(expected, 16) / 1_000_000).toFixed(6) : '0.005';
+          userFriendlyMessage = `Insufficient STX balance. You need at least ${expectedStx} STX to pay for the transaction fee. Please fund your account with STX and try again.`;
+        } else if (responseBody.reason) {
+          userFriendlyMessage = `Transaction rejected: ${responseBody.reason}${responseBody.error ? ' - ' + responseBody.error : ''}`;
+        } else if (responseBody.error) {
+          userFriendlyMessage = responseBody.error;
+        }
+      }
+      
+      // Log the full error for debugging (using safe extraction)
+      const safeErrorDetails = safeExtract(errorDetails);
+      console.error('Transaction broadcast error:', safeErrorDetails);
+      
+      // Provide detailed error message
+      const detailedMessage = userFriendlyMessage || (typeof responseBody === 'string' ? responseBody : (errorDetails.response || errorDetails.reason || errorDetails.apiError || errorDetails.data || errorMessage));
+      throw new Error(detailedMessage);
     }
   }
 

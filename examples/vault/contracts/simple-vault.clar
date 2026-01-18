@@ -13,6 +13,8 @@
 ;; @desc Allows users to deposit STX into the vault
 ;; @param amount (uint) - The amount of STX to deposit (in micro-STX)
 ;; @returns (response bool uint) - (ok true) if deposit succeeds, (err uint) on error
+;; Note: KYC requirements are defined off-chain by the protocol (in metadata/API)
+;; Users must meet requirements before accessing this protocol
 (define-public (deposit (amount uint))
   (begin
     (asserts! (> amount u0) ERR_INVALID_AMOUNT)
@@ -37,6 +39,8 @@
 ;; @desc Allows users to withdraw their deposited STX from the vault
 ;; @param amount (uint) - The amount of STX to withdraw (in micro-STX)
 ;; @returns (response bool uint) - (ok true) if withdrawal succeeds, (err uint) on error
+;; Note: KYC requirements are defined off-chain by the protocol (in metadata/API)
+;; Users must meet requirements before accessing this protocol
 (define-public (withdraw (amount uint))
   (begin
     (asserts! (> amount u0) ERR_INVALID_AMOUNT)

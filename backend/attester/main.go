@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -44,8 +45,20 @@ func main() {
 	// Setup routes
 	router := gin.Default()
 
+	// Configure CORS
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:5174", "http://localhost:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
+
 	// Health check
 	router.GET("/health", api.HealthCheck)
+
+	// Attester info
+	router.GET("/info", api.GetAttesterInfo)
 
 	// Credential operations
 	router.POST("/credential/issue", api.IssueCredential)

@@ -10,11 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@emotion/react": "^11.13.0",
+    "@emotion/styled": "^11.13.0",
+    "@mui/icons-material": "^5.15.0",
+    "@mui/material": "^5.15.0",
     "@stacks/connect": "^6.0.0",
     "@stacks/network": "^6.17.0",
     "@stacks/transactions": "^6.0.0",
     "buffer": "^6.0.3",
-    "noah-clarity": "^0.1.0",
+    "noah-clarity": "^0.3.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "regenerator-runtime": "^0.14.1"

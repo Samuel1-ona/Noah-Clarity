@@ -1,7 +1,30 @@
 import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Button,
+  TextField,
+  Typography,
+  Alert,
+  CircularProgress,
+  Paper,
+  Chip,
+  Divider,
+  Grid,
+} from '@mui/material';
+import {
+  AccountBalance as AccountBalanceIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+} from '@mui/icons-material';
 import { getUserSession, getUserAddress, getNetwork } from '../lib/stacks';
 import { isKYCValid } from '../lib/kyc';
-import { 
+import { getProtocolRequirements, JURISDICTION_NAMES } from '../config/protocolRequirements';
+import type { ProtocolRequirements } from 'noah-clarity';
+import {
   uintCV,
   principalCV,
   cvToJSON,
@@ -33,6 +56,24 @@ export const Vault: React.FC = () => {
   });
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [protocolRequirements, setProtocolRequirements] = useState<ProtocolRequirements>({
+    min_age: 18,
+    allowed_jurisdictions: [1, 2, 3],
+    require_accreditation: false,
+  });
+
+  // Fetch protocol requirements
+  useEffect(() => {
+    const fetchRequirements = async () => {
+      try {
+        const reqs = await getProtocolRequirements('vault');
+        setProtocolRequirements(reqs);
+      } catch (err) {
+        console.error('Failed to fetch requirements:', err);
+      }
+    };
+    fetchRequirements();
+  }, []);
 
   // Initialize SDK and check KYC status
   useEffect(() => {
@@ -205,83 +246,169 @@ export const Vault: React.FC = () => {
 
   if (!session) {
     return (
-      <div className="vault-container">
-        <p>Please connect your wallet to use the vault.</p>
-      </div>
+      <Card sx={{ maxWidth: 600, mx: 'auto' }}>
+        <CardContent sx={{ textAlign: 'center', py: 4 }}>
+          <Typography variant="h6" gutterBottom>
+            Connect Your Wallet
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Please connect your Stacks wallet to use the vault.
+          </Typography>
+        </CardContent>
+      </Card>
     );
   }
 
   if (vaultState.loading) {
     return (
-      <div className="vault-container">
-        <p>Loading vault status...</p>
-      </div>
+      <Card sx={{ maxWidth: 600, mx: 'auto' }}>
+        <CardContent sx={{ textAlign: 'center', py: 4 }}>
+          <CircularProgress />
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Loading vault status...
+          </Typography>
+        </CardContent>
+      </Card>
     );
   }
 
   if (!vaultState.kycStatus) {
     return (
-      <div className="vault-container">
-        <div className="kyc-required">
-          <h2>KYC Verification Required</h2>
-          <p>You must complete KYC verification before you can use the vault.</p>
-          <p>Please complete your KYC registration in the "KYC Form" tab first.</p>
-        </div>
-      </div>
+      <Card sx={{ maxWidth: 600, mx: 'auto' }}>
+        <CardContent>
+          <Box sx={{ textAlign: 'center', py: 2 }}>
+            <WarningIcon sx={{ fontSize: 60, color: 'warning.main', mb: 2 }} />
+            <Typography variant="h6" gutterBottom>
+              KYC Verification Required
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              You must complete KYC verification before you can use the vault.
+            </Typography>
+            <Paper elevation={0} sx={{ p: 2, mb: 3, bgcolor: 'grey.50', textAlign: 'left' }}>
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
+                This Protocol Requires:
+              </Typography>
+              <Box sx={{ mt: 1 }}>
+                <Chip size="small" label={`Age: ${protocolRequirements.min_age}+`} sx={{ mr: 1, mb: 1 }} />
+                <Chip 
+                  size="small" 
+                  label={`Jurisdictions: ${protocolRequirements.allowed_jurisdictions.map(j => JURISDICTION_NAMES[j] || j).join(', ')}`} 
+                  sx={{ mr: 1, mb: 1 }} 
+                />
+                {protocolRequirements.require_accreditation && (
+                  <Chip size="small" label="Accredited Investor" color="warning" />
+                )}
+              </Box>
+            </Paper>
+            <Typography variant="body2" color="text.secondary">
+              Please complete your KYC registration in the "KYC Registration" tab first.
+            </Typography>
+          </Box>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="vault-container">
-      <h2>Simple Vault</h2>
-      
-      {vaultState.error && (
-        <div className="error-message" style={{ color: 'red', marginBottom: '1rem' }}>
-          {vaultState.error}
-        </div>
-      )}
-
-      <div className="balance-section">
-        <h3>Your Balance</h3>
-        <p className="balance-amount">{formatBalance(vaultState.balance)} STX</p>
-      </div>
-
-      <div className="vault-actions">
-        <div className="deposit-section">
-          <h3>Deposit STX</h3>
-          <input
-            type="number"
-            placeholder="Amount (STX)"
-            value={depositAmount}
-            onChange={(e) => setDepositAmount(e.target.value)}
-            disabled={vaultState.depositing}
+    <Card sx={{ maxWidth: 800, mx: 'auto' }}>
+      <CardContent>
+        <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AccountBalanceIcon color="primary" />
+          <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+            Secure Vault
+          </Typography>
+          <Chip 
+            icon={<CheckCircleIcon />} 
+            label="KYC Verified" 
+            color="success" 
+            size="small" 
+            sx={{ ml: 'auto' }} 
           />
-          <button 
-            onClick={handleDeposit}
-            disabled={vaultState.depositing || !depositAmount}
-          >
-            {vaultState.depositing ? 'Depositing...' : 'Deposit'}
-          </button>
-        </div>
+        </Box>
 
-        <div className="withdraw-section">
-          <h3>Withdraw STX</h3>
-          <input
-            type="number"
-            placeholder="Amount (STX)"
-            value={withdrawAmount}
-            onChange={(e) => setWithdrawAmount(e.target.value)}
-            disabled={vaultState.withdrawing}
-          />
-          <button 
-            onClick={handleWithdraw}
-            disabled={vaultState.withdrawing || !withdrawAmount}
-          >
-            {vaultState.withdrawing ? 'Withdrawing...' : 'Withdraw'}
-          </button>
-        </div>
-      </div>
-    </div>
+        {vaultState.error && (
+          <Alert severity="error" sx={{ mb: 3 }} onClose={() => setVaultState(prev => ({ ...prev, error: null }))}>
+            {vaultState.error}
+          </Alert>
+        )}
+
+        <Paper elevation={0} sx={{ p: 3, mb: 3, bgcolor: 'primary.50', border: '1px solid', borderColor: 'primary.200' }}>
+          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+            Your Balance
+          </Typography>
+          <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+            {formatBalance(vaultState.balance)} STX
+          </Typography>
+        </Paper>
+
+        <Divider sx={{ my: 3 }} />
+
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <Paper elevation={2} sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <ArrowUpwardIcon color="success" sx={{ mr: 1 }} />
+                <Typography variant="h6">Deposit STX</Typography>
+              </Box>
+              <TextField
+                fullWidth
+                label="Amount (STX)"
+                type="number"
+                value={depositAmount}
+                onChange={(e) => setDepositAmount(e.target.value)}
+                disabled={vaultState.depositing}
+                margin="normal"
+                InputProps={{
+                  inputProps: { min: 0, step: 0.000001 }
+                }}
+              />
+              <Button
+                fullWidth
+                variant="contained"
+                color="success"
+                onClick={handleDeposit}
+                disabled={vaultState.depositing || !depositAmount}
+                sx={{ mt: 2 }}
+                startIcon={vaultState.depositing ? <CircularProgress size={20} /> : <ArrowUpwardIcon />}
+              >
+                {vaultState.depositing ? 'Depositing...' : 'Deposit'}
+              </Button>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <Paper elevation={2} sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <ArrowDownwardIcon color="error" sx={{ mr: 1 }} />
+                <Typography variant="h6">Withdraw STX</Typography>
+              </Box>
+              <TextField
+                fullWidth
+                label="Amount (STX)"
+                type="number"
+                value={withdrawAmount}
+                onChange={(e) => setWithdrawAmount(e.target.value)}
+                disabled={vaultState.withdrawing}
+                margin="normal"
+                InputProps={{
+                  inputProps: { min: 0, step: 0.000001, max: parseFloat(formatBalance(vaultState.balance)) }
+                }}
+              />
+              <Button
+                fullWidth
+                variant="contained"
+                color="error"
+                onClick={handleWithdraw}
+                disabled={vaultState.withdrawing || !withdrawAmount}
+                sx={{ mt: 2 }}
+                startIcon={vaultState.withdrawing ? <CircularProgress size={20} /> : <ArrowDownwardIcon />}
+              >
+                {vaultState.withdrawing ? 'Withdrawing...' : 'Withdraw'}
+              </Button>
+            </Paper>
+          </Grid>
+        </Grid>
+      </CardContent>
+    </Card>
   );
 };
-

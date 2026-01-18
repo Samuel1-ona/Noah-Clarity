@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { checkKYCStatus, isKYCValid } from '../lib/kyc';
+import { isKYCValid } from '../lib/kyc';
 import { getUserAddress } from '../lib/stacks';
 
 /**

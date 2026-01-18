@@ -28,7 +28,7 @@ type AttestationRequest struct {
 // AttestationResponse contains the signed attestation
 type AttestationResponse struct {
 	Commitment    string `json:"commitment"`
-	Signature     string `json:"signature"` // 65-byte signature (r || s || v)
+	Signature     string `json:"signature"` // 64-byte signature (r || s) for Clarity compatibility
 	AttesterID    uint   `json:"attester_id"`
 	Expiry        uint64 `json:"expiry"`
 	Success       bool   `json:"success"`

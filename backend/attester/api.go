@@ -10,6 +10,7 @@ import (
 type API struct {
 	issuerService     *IssuerService
 	revocationService *RevocationService
+	signer            *Signer
 }
 
 // NewAPI creates a new API handler
@@ -17,6 +18,7 @@ func NewAPI(signer *Signer) *API {
 	return &API{
 		issuerService:     NewIssuerService(signer),
 		revocationService: NewRevocationService(),
+		signer:            signer,
 	}
 }
 
@@ -108,6 +110,14 @@ func (api *API) HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "healthy",
 		"service": "noah-attester",
+	})
+}
+
+// GetAttesterInfo returns the attester ID and public key
+func (api *API) GetAttesterInfo(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"attester_id": api.signer.GetAttesterID(),
+		"public_key":  api.signer.GetPublicKey(),
 	})
 }
 

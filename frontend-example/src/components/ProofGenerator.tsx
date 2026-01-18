@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { generateProof, ProofRequest } from '../lib/proof';
+import { generateProof } from '../lib/proof';
+import type { ProofRequest } from '../lib/proof';
 
 export const ProofGenerator: React.FC = () => {
   const [proofRequest, setProofRequest] = useState<Partial<ProofRequest>>({
