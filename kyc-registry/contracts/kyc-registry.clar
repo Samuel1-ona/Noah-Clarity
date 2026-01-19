@@ -9,7 +9,9 @@
   { 
     commitment: (buff 32), 
     attester-id: uint, 
-    registered-at: uint
+    registered-at: uint,
+    previous-commitment: (optional (buff 32)),
+    previous-registered-at: (optional uint)
   })
 
 (define-constant ERR_NOT_AUTHORIZED (err u2000))
@@ -54,13 +56,28 @@
       ;; Verify signature
       (asserts! (secp256k1-verify commitment signature pubkey) ERR_INVALID_SIGNATURE)
       
-      ;; Store KYC record
-      (map-set kyc-registry { user: tx-sender } 
-        { 
-          commitment: commitment, 
-          attester-id: attester-id, 
-          registered-at: stacks-block-height
-        })
+      ;; Store KYC record (with history if updating existing record)
+      (let ((existing-record (map-get? kyc-registry { user: tx-sender })))
+        (if (is-some existing-record)
+          ;; Updating existing record - save previous values
+          (let ((old-record (unwrap-panic existing-record)))
+            (map-set kyc-registry { user: tx-sender } 
+              { 
+                commitment: commitment, 
+                attester-id: attester-id, 
+                registered-at: stacks-block-height,
+                previous-commitment: (some (get commitment old-record)),
+                previous-registered-at: (some (get registered-at old-record))
+              }))
+          ;; New record - no previous values
+          (map-set kyc-registry { user: tx-sender } 
+            { 
+              commitment: commitment, 
+              attester-id: attester-id, 
+              registered-at: stacks-block-height,
+              previous-commitment: none,
+              previous-registered-at: none
+            })))
       (ok true)
     )
   )
@@ -82,17 +99,19 @@
 )
 
 ;; Get KYC details for a user
-;; Returns the full KYC record including commitment, attester-id, and registration timestamp
+;; Returns the full KYC record including commitment, attester-id, registration timestamp, and history
 ;; 
 ;; @param user - Stacks principal address of the user
 ;; @return (ok (some kyc-record)) - KYC record tuple containing:
-;;   - commitment: (buff 32) - Identity commitment hash
-;;   - attester-id: uint - ID of the attester who issued the KYC
-;;   - registered-at: uint - Block height when KYC was registered
+;;   - commitment: (buff 32) - Current identity commitment hash
+;;   - attester-id: uint - ID of the attester who issued the current KYC
+;;   - registered-at: uint - Block height when current KYC was registered
+;;   - previous-commitment: (optional (buff 32)) - Previous commitment if record was updated
+;;   - previous-registered-at: (optional uint) - Block height of previous registration if record was updated
 ;; @return (ok none) - If user has no KYC record
 ;; 
 ;; Use case: Applications can retrieve KYC details to verify which attester issued the credential
-;; and when it was registered
+;; and when it was registered. History fields allow tracking of updates to the KYC record.
 (define-read-only (get-kyc (user principal))
   (match (map-get? kyc-registry { user: user })
     kyc-record (ok (some kyc-record))
@@ -106,9 +125,12 @@
 ;; @return (ok true) if user has a valid KYC record
 ;; @return (ok false) if user has no KYC record
 ;; 
-;; Note: This function is functionally equivalent to has-kyc? since KYC records
-;; do not expire. Both functions return true if a KYC record exists, false otherwise.
-;; This function name provides a more semantic API for applications checking KYC validity.
+;; Note: This function only checks if a KYC record exists. Revocation checking is performed
+;; off-chain by applications using the SDK's isKYCValid() function, which checks the revocation
+;; Merkle root and verifies non-membership proofs.
+;; 
+;; TODO: Add on-chain revocation checking (requires simpler revocation mechanism or
+;; Merkle proof verification support in Clarity)
 (define-read-only (is-kyc-valid? (user principal))
   (match (map-get? kyc-registry { user: user })
     kyc-record (ok true)

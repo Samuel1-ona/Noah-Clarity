@@ -24,7 +24,7 @@ export const TESTNET_CONTRACTS: ContractAddresses = {
   contracts: {
     'attester-registry': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Attester-registry',
     'attester-registry-trait': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.attester-registry-trait',
-    'kyc-registry': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.KYCsss-registry',
+    'kyc-registry': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.KYc-registry',
     'revocation': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.revocation',
   },
   deployment_date: '2025-01-17',
@@ -64,6 +64,7 @@ export function createSDKConfig(
   return {
     kycRegistryAddress: addresses.contracts['kyc-registry'],
     attesterRegistryAddress: addresses.contracts['attester-registry'],
+    revocationRegistryAddress: addresses.contracts['revocation'],
     network: addresses.network as 'testnet' | 'mainnet' | 'devnet',
     proverServiceUrl: options?.proverServiceUrl || 'http://localhost:8080',
     attesterServiceUrl: options?.attesterServiceUrl || 'http://localhost:8081',

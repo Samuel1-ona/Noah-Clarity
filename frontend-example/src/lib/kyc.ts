@@ -10,7 +10,7 @@ import { bufferCV, uintCV } from '@stacks/transactions';
 import { getNetwork } from './stacks';
 
 const SDK_CONFIG: SDKConfig = {
-  kycRegistryAddress: import.meta.env.VITE_KYC_REGISTRY || 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.KYCsss-registry',
+  kycRegistryAddress: import.meta.env.VITE_KYC_REGISTRY || 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.KYc-registry',
   attesterRegistryAddress: import.meta.env.VITE_ATTESTER_REGISTRY || 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Attester-registry',
   proverServiceUrl: import.meta.env.VITE_PROVER_URL || 'http://localhost:8080',
   attesterServiceUrl: import.meta.env.VITE_ATTESTER_URL || 'http://localhost:8081',

@@ -549,7 +549,7 @@ import { NoahSDK } from 'noah-clarity';
 
 const sdk = new NoahSDK(
   {
-    kycRegistryAddress: 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.KYCsss-registry',
+    kycRegistryAddress: 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.KYc-registry',
     attesterRegistryAddress: 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Attester-registry',
     network: 'testnet', // or 'mainnet'
   },

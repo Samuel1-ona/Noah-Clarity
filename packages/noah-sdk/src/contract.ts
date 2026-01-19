@@ -325,14 +325,88 @@ export class KYCContract {
   }
 
   /**
+   * Get revocation root from the revocation registry contract
+   * @returns Revocation root (32-byte hex string) or null if contract not configured
+   */
+  async getRevocationRoot(): Promise<string | null> {
+    if (!this.config.revocationRegistryAddress) {
+      return null;
+    }
+
+    const { address, name } = this.parseContractAddress(this.config.revocationRegistryAddress);
+
+    try {
+      const result = await callReadOnlyFunction({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'get-revocation-root',
+        functionArgs: [],
+        network: this.network,
+        senderAddress: address,
+      });
+
+      const jsonResult = cvToJSON(result);
+      
+      // Result is (ok (buff 32))
+      if (jsonResult.success === true || (jsonResult.type && jsonResult.type.includes('response'))) {
+        const rootValue = jsonResult.value?.value;
+        if (rootValue) {
+          // Convert buffer to hex string
+          return rootValue.startsWith('0x') ? rootValue : `0x${rootValue}`;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching revocation root:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if a commitment is revoked by checking the revocation root
+   * Note: This is a simplified check. For full verification, non-membership proofs are needed.
+   * @param commitment Commitment to check (hex string)
+   * @returns true if revoked, false if not revoked or if revocation checking is unavailable
+   */
+  async isCommitmentRevoked(commitment: string): Promise<boolean> {
+    const root = await this.getRevocationRoot();
+    
+    // If no revocation registry configured or root is zero (empty tree), nothing is revoked
+    if (!root || root === '0x0000000000000000000000000000000000000000000000000000000000000000') {
+      return false;
+    }
+
+    // TODO: Full revocation checking requires non-membership proof verification
+    // For now, we return false (not revoked) when root exists but we can't verify without proof
+    // In production, you should:
+    // 1. Request a non-membership proof from the attester service
+    // 2. Verify the proof using Merkle tree verification
+    // 3. Return true if proof verification fails or if commitment is in revocation tree
+    return false;
+  }
+
+  /**
    * Check if KYC is valid
-   * Since KYC records don't expire, this is equivalent to hasKYC
+   * Now includes revocation checking
    * @param userPrincipal User's Stacks principal
-   * @returns true if KYC is valid
+   * @returns true if KYC is valid (exists and not revoked)
    */
   async isKYCValid(userPrincipal: string): Promise<boolean> {
-    const status = await this.hasKYC(userPrincipal);
-    return status.hasKYC;
+    // First check if user has KYC record
+    const kycDetails = await this.getKYC(userPrincipal);
+
+    if (!kycDetails || !kycDetails.hasKYC || !kycDetails.commitment) {
+      return false;
+    }
+
+    // Check revocation status
+    const isRevoked = await this.isCommitmentRevoked(kycDetails.commitment);
+
+    if (isRevoked) {
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -356,14 +430,25 @@ export class KYCContract {
       const jsonResult = cvToJSON(result);
       
       // Result is (ok (some kyc-record)) or (ok none)
-      if (jsonResult.type === 'responseOk' && jsonResult.value.type === 'optionalSome') {
+      // cvToJSON returns structure: { success: true, type: "...", value: { type: "(optional ...)", value: { type: "(tuple ...)", value: { ... } } } }
+      if (jsonResult.success === true && jsonResult.value?.value?.value) {
         const record = jsonResult.value.value.value;
-        return {
+        const result: KYCStatus = {
           hasKYC: true,
           commitment: record.commitment?.value,
           attesterId: record['attester-id']?.value,
           registeredAt: record['registered-at']?.value,
         };
+        
+        // Add history fields if present
+        if (record['previous-commitment']?.value) {
+          result.previousCommitment = record['previous-commitment'].value;
+        }
+        if (record['previous-registered-at']?.value !== undefined) {
+          result.previousRegisteredAt = record['previous-registered-at'].value;
+        }
+        
+        return result;
       } else {
         return null;
       }

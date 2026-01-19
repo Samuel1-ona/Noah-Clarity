@@ -7,6 +7,8 @@ export interface KYCStatus {
   commitment?: string;
   attesterId?: number;
   registeredAt?: number;
+  previousCommitment?: string;
+  previousRegisteredAt?: number;
 }
 
 export interface RegisterKYCParams {
@@ -53,6 +55,7 @@ export interface AttestationResponse {
 export interface SDKConfig {
   kycRegistryAddress: string;
   attesterRegistryAddress: string;
+  revocationRegistryAddress?: string;
   proverServiceUrl?: string;
   attesterServiceUrl?: string;
   network?: 'mainnet' | 'testnet' | 'devnet';
