@@ -49,12 +49,6 @@ export class KYCContract {
   ): Promise<string> {
     const senderAddress = getAddressFromPrivateKey(privateKey, this.network.version);
 
-    // #region agent log
-    console.log('Transaction sender address (derived from private key):', senderAddress);
-    console.log('Network version:', this.network.version);
-    fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:50','message':'registerKYC entry','data':{senderAddress,network:this.network.coreApiUrl,networkVersion:this.network.version,attesterId:params.attesterId,commitmentLength:params.commitment.length,signatureLength:params.signature.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion agent log
-
     const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
 
     // Ensure commitment is exactly 32 bytes (64 hex chars)
@@ -89,27 +83,8 @@ export class KYCContract {
       postConditionMode: PostConditionMode.Allow,
     };
 
-    // #region agent log
-    fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:74','message':'Transaction options before makeContractCall','data':{contractAddress:address,contractName:name,functionName:'register-kyc',fee:txOptions.fee,anchorMode:txOptions.anchorMode,postConditionMode:txOptions.postConditionMode,networkUrl:this.network.coreApiUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion agent log
-
     try {
       const transaction = await makeContractCall(txOptions);
-      
-      // #region agent log
-      const serializedTx = transaction.serialize();
-      const nonceValue = (transaction as any).auth?.spendingCondition?.nonce;
-      const txData = {
-        txId: transaction.txid(),
-        nonce: typeof nonceValue === 'bigint' ? nonceValue.toString() : nonceValue,
-        serializedTxLength: serializedTx.byteLength,
-      };
-      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:87','message':'Transaction created, before broadcast','data':txData,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion agent log
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:108','message':'About to call broadcastTransaction','data':{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion agent log
       
       try {
       const broadcastResponse = await broadcastTransaction(transaction, this.network);
@@ -121,10 +96,6 @@ export class KYCContract {
         throw broadcastError;
       }
     } catch (error: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:110','message':'Caught error in registerKYC','data':{errorType:error?.constructor?.name,hasMessage:!!error?.message,message:error?.message?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion agent log
-      
       // Helper function to safely serialize data (handles BigInt)
       const safeStringify = (obj: any): string => {
         try {
@@ -165,25 +136,6 @@ export class KYCContract {
         return result;
       };
       
-      // #region agent log
-      const errorKeys = error ? Object.keys(error) : [];
-      const errorStructure = {
-        hasError: !!error,
-        hasResponse: !!error?.response,
-        hasData: !!error?.data,
-        hasStatus: !!error?.status,
-        hasStatusText: !!error?.statusText,
-        hasReason: !!error?.reason,
-        hasMessage: !!error?.message,
-        errorKeys: errorKeys,
-        errorType: error?.constructor?.name,
-        status: error?.status,
-        statusText: error?.statusText,
-        message: error?.message,
-      };
-      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:safeStringify({location:'contract.ts:135','message':'Error object structure','data':errorStructure,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion agent log
-      
       // Capture detailed error information
       let errorMessage = 'Transaction failed';
       let errorDetails: any = {};
@@ -219,10 +171,6 @@ export class KYCContract {
       if (error?.status) errorDetails.status = error.status;
       if (error?.statusText) errorDetails.statusText = error.statusText;
       
-      // #region agent log
-      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:safeStringify({location:'contract.ts:120','message':'Error details captured','data':errorDetails,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion agent log
-      
       // Try to extract response body if it exists
       let responseBody = null;
       if (error?.response?.data) {
@@ -230,12 +178,6 @@ export class KYCContract {
       } else if (error?.data) {
         responseBody = typeof error.data === 'string' ? error.data : safeExtract(error.data);
       }
-      
-      // #region agent log
-      if (responseBody) {
-        fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:safeStringify({location:'contract.ts:135','message':'API response body','data':{responseBody:typeof responseBody === 'string' ? responseBody : safeStringify(responseBody)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      }
-      // #endregion agent log
       
       // Extract error details from response body for user-friendly messages
       let userFriendlyMessage = errorMessage;
@@ -269,10 +211,6 @@ export class KYCContract {
   async hasKYC(userPrincipal: string): Promise<KYCStatus> {
     const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:269','message':'hasKYC called','data':{userPrincipal,contractAddress:this.config.kycRegistryAddress,parsedAddress:address,parsedName:name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion agent log
-
     try {
       const result = await callReadOnlyFunction({
         contractAddress: address,
@@ -283,23 +221,7 @@ export class KYCContract {
         senderAddress: address, // Use contract address as sender for read-only calls
       });
 
-      // #region agent log
-      console.log('hasKYC callReadOnlyFunction result (before cvToJSON):', result);
-      console.log('hasKYC result type:', typeof result);
-      console.log('hasKYC result constructor:', result?.constructor?.name);
-      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:277','message':'hasKYC callReadOnlyFunction result','data':{userPrincipal,resultType:typeof result,resultConstructor:result?.constructor?.name,resultString:String(result)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion agent log
-
       const jsonResult = cvToJSON(result);
-      
-      // #region agent log
-      console.log('hasKYC raw result (after cvToJSON):', JSON.stringify(jsonResult, null, 2));
-      console.log('hasKYC jsonResult.type:', jsonResult.type);
-      console.log('hasKYC jsonResult.value:', jsonResult.value);
-      console.log('hasKYC jsonResult.value type:', typeof jsonResult.value);
-      console.log('hasKYC jsonResult.success:', jsonResult.success);
-      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:290','message':'hasKYC result after cvToJSON','data':{userPrincipal,resultType:jsonResult.type,resultValue:jsonResult.value,resultValueType:typeof jsonResult.value,resultSuccess:jsonResult.success,fullResult:JSON.stringify(jsonResult)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion agent log
       
       // Result is (ok bool), cvToJSON returns:
       // { type: '(response bool UnknownType)', value: { type: 'bool', value: true }, success: true }
@@ -308,17 +230,11 @@ export class KYCContract {
         // Extract the boolean value from the nested structure
         const boolValue = jsonResult.value?.value;
         const hasKYC = boolValue === true;
-        console.log('hasKYC final result:', hasKYC, 'jsonResult.value.value:', boolValue, 'type:', typeof boolValue);
         return { hasKYC };
       } else {
-        console.log('hasKYC: response not ok, type:', jsonResult.type, 'success:', jsonResult.success, 'full result:', JSON.stringify(jsonResult));
         return { hasKYC: false };
       }
     } catch (error) {
-      // #region agent log
-      console.error('hasKYC exception:', error);
-      fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'contract.ts:294','message':'hasKYC error','data':{userPrincipal,error:error instanceof Error ? error.message : String(error),errorStack:error instanceof Error ? error.stack : undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion agent log
       console.error('Error checking KYC status:', error);
       return { hasKYC: false };
     }
@@ -363,26 +279,34 @@ export class KYCContract {
   }
 
   /**
-   * Check if a commitment is revoked by checking the revocation root
-   * Note: This is a simplified check. For full verification, non-membership proofs are needed.
+   * Check if a commitment is revoked by querying the attester service
    * @param commitment Commitment to check (hex string)
    * @returns true if revoked, false if not revoked or if revocation checking is unavailable
    */
   async isCommitmentRevoked(commitment: string): Promise<boolean> {
-    const root = await this.getRevocationRoot();
-    
-    // If no revocation registry configured or root is zero (empty tree), nothing is revoked
-    if (!root || root === '0x0000000000000000000000000000000000000000000000000000000000000000') {
+    // If no attester service URL configured, skip revocation check
+    if (!this.config.attesterServiceUrl) {
       return false;
     }
 
-    // TODO: Full revocation checking requires non-membership proof verification
-    // For now, we return false (not revoked) when root exists but we can't verify without proof
-    // In production, you should:
-    // 1. Request a non-membership proof from the attester service
-    // 2. Verify the proof using Merkle tree verification
-    // 3. Return true if proof verification fails or if commitment is in revocation tree
-    return false;
+    try {
+      // Query attester service for revocation status
+      const url = `${this.config.attesterServiceUrl}/revocation/check?commitment=${encodeURIComponent(commitment)}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        // If service unavailable, assume not revoked (fail open)
+        console.warn('Revocation check service unavailable, assuming not revoked');
+        return false;
+      }
+
+      const data = await response.json() as { revoked?: boolean; commitment?: string };
+      return data.revoked === true;
+    } catch (error) {
+      // On error, assume not revoked (fail open)
+      console.error('Error checking revocation status:', error);
+      return false;
+    }
   }
 
   /**

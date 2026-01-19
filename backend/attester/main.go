@@ -153,6 +153,7 @@ func main() {
 
 	// Revocation
 	router.GET("/revocation/root", api.GetRevocationRoot)
+	router.GET("/revocation/check", api.CheckRevocationStatus)
 
 	// Start server
 	log.Printf("Starting attester service on port %s", config.Port)

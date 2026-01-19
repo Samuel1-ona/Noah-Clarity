@@ -111,6 +111,24 @@ func (api *API) GetRevocationRoot(c *gin.Context) {
 	})
 }
 
+// CheckRevocationStatus checks if a commitment is revoked
+// GET /revocation/check?commitment=0x...
+func (api *API) CheckRevocationStatus(c *gin.Context) {
+	commitment := c.Query("commitment")
+	if commitment == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "commitment query parameter is required",
+		})
+		return
+	}
+
+	isRevoked := api.revocationService.IsRevoked(commitment)
+	c.JSON(http.StatusOK, gin.H{
+		"commitment": commitment,
+		"revoked":    isRevoked,
+	})
+}
+
 // HealthCheck returns service health status
 func (api *API) HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
