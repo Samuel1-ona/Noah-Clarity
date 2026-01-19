@@ -1,79 +1,171 @@
-# User Flow: Protocol-Specific KYC Requirements
+# User Flow: Understanding the Complete KYC Journey
 
-## Complete User Flow
+This document walks through the complete user journey in Noah-v2, from initial KYC registration to using multiple protocols. Understanding this flow helps you build better user experiences and integrate KYC into your protocol effectively.
 
-### Phase 1: Initial KYC Registration (One-Time)
+## The Two-Phase Journey
 
-```
-1. User connects wallet
-   ↓
-2. User submits KYC documents to Attester (off-chain)
-   ↓
-3. Attester verifies identity and issues credential
-   ↓
-4. User generates ZK proof (generic proof)
-   ↓
-5. User gets attestation from Attester
-   ↓
-6. User registers KYC on-chain → register-kyc()
-   ↓
-✅ User now has registered KYC on-chain
-```
+The Noah-v2 user journey has two distinct phases:
 
-### Phase 2: Using Protocol with Specific Requirements (Each Protocol)
+1. **Phase 1: Initial KYC Registration** - Users do this once, when they first start using protocols that require KYC
+2. **Phase 2: Using Protocols** - Users do this each time they want to use a protocol, but it gets simpler after the first time
+
+Let's walk through each phase in detail.
+
+## Phase 1: Initial KYC Registration (One-Time Process)
+
+This is what happens when a user first encounters a protocol that requires KYC. They need to complete the full registration process.
+
+### Step-by-Step Flow
 
 ```
-7. User wants to access Protocol A
+1. User connects their wallet
    ↓
-8. User fetches Protocol A's requirements (off-chain)
+2. User sees "KYC Required" message
+   ↓
+3. User clicks "Start KYC Registration"
+   ↓
+4. User submits identity documents to Attester (off-chain)
+   • User uploads documents (driver's license, passport, etc.)
+   • Documents are sent to the Attester Service
+   • This happens privately, off-chain
+   ↓
+5. Attester verifies identity and issues credential
+   • Attester checks documents are legitimate
+   • Attester stores credential data (user keeps this private)
+   • User now has verified credentials
+   ↓
+6. User generates zero-knowledge proof
+   • User's credential data → Proof Service
+   • Proof Service generates cryptographic proof
+   • Proof proves user has valid credentials without revealing data
+   ↓
+7. User gets attestation from Attester
+   • User sends proof to Attester Service
+   • Attester verifies the proof is valid
+   • Attester signs commitment with private key
+   • Returns signature + commitment to user
+   ↓
+8. User registers KYC on-chain
+   • User submits transaction: register-kyc(commitment, signature, attester-id)
+   • KYC Registry contract stores: {user-address, commitment, attester-id}
+   • Transaction confirmed on blockchain
+   ↓
+✅ User now has KYC registered on-chain
+   (This registration works for ALL protocols!)
+```
+
+### What Users Experience
+
+From a user's perspective, this feels like:
+1. "I need to verify my identity to use this protocol"
+2. "I'll upload my documents"
+3. "I'll wait for verification" (this might take a few minutes or hours, depending on the attester)
+4. "Great! I'm verified and registered"
+
+The complexity (proof generation, attestation, on-chain registration) is handled by the SDK and backend services, so users just see a simple flow.
+
+## Phase 2: Using Protocols (What Happens Each Time)
+
+Once a user has registered KYC, they can use any protocol that requires KYC. Here's what happens:
+
+### Step-by-Step Flow
+
+```
+User wants to access Protocol A
+   ↓
+Protocol A publishes requirements (off-chain)
    Example: { min_age: 21, allowed_jurisdictions: [1], require_accreditation: true }
    ↓
-9. User generates proof matching Protocol A's requirements
-   Uses: generateProofForProtocol(userCredential, protocolRequirements)
+User fetches Protocol A's requirements
+   • Protocol serves requirements from config file, JSON, IPFS, CDN, or API
+   • User's application receives requirements
    ↓
-10. User gets attestation from Attester (attester verifies proof)
+User generates proof matching Protocol A's requirements
+   • User's credential data + Protocol A's requirements → Proof Service
+   • Proof Service generates ZK proof
+   • Proof proves: user meets Protocol A's requirements
+   ↓
+User gets attestation from Attester
+   • User sends proof to Attester Service
+   • Attester verifies proof matches requirements
+   • Attester signs commitment
     ↓
-11. User registers/updates KYC on-chain (if needed)
-    OR User already has KYC registered (reuses existing)
+User registers/updates KYC on-chain (if needed)
+   OR User already has KYC registered (can reuse existing)
     ↓
-12. Protocol checks: Does user have valid KYC? (on-chain check)
-    Uses: isKYCValid?(userAddress)
-    ↓
-13. If valid: Protocol grants access ✅
-    If invalid: Protocol denies access ❌
+Protocol A checks user's KYC status (on-chain)
+   • Protocol calls: isKYCValid?(user-address)
+   • KYC Registry checks: user has valid KYC registered
+   • Returns: true ✅
+   ↓
+Protocol A grants access to user
+   • User can now deposit, trade, vote, etc.
 ```
 
+### The Beautiful Part: Reusability
+
+Here's where it gets interesting. Once a user has registered KYC on-chain, **they can use it with any protocol**:
+
+```
+User has KYC registered on-chain (from Phase 1)
+   ↓
+User wants to use Protocol B
+   • Protocol B checks: isKYCValid?(user-address)
+   • Returns: true ✅
+   • Protocol B grants access
+   (No re-registration needed!)
+   ↓
+User wants to use Protocol C
+   • Protocol C checks: isKYCValid?(user-address)
+   • Returns: true ✅
+   • Protocol C grants access
+   (Still no re-registration needed!)
+```
+
+**Key insight:** Users register KYC once, then reuse it everywhere. Protocols just check if the user has valid KYC registered - they don't need to know the user's specific credentials.
+
 ## Detailed Flow with Code Examples
+
+Let's look at what the code looks like for each step.
 
 ### Step 1: Protocol Defines Requirements
 
 **Protocol Side (Off-Chain):**
+
+The protocol defines what it needs. This could be in a config file, JSON file, or API:
+
 ```typescript
-// Protocol defines requirements (e.g., in JSON file or API)
+// Protocol defines requirements
 const protocolRequirements: ProtocolRequirements = {
   min_age: 21,
   allowed_jurisdictions: [1], // US only
   require_accreditation: true
 };
 
-// Protocol exposes this via API/metadata
-// Example: GET /api/requirements → returns protocolRequirements
+// Protocol exposes this (maybe via API, config file, etc.)
+// Users fetch this before generating proofs
 ```
 
 ### Step 2: User Fetches Protocol Requirements
 
 **User Side:**
+
+When a user wants to use a protocol, they fetch the requirements:
+
 ```typescript
 // User wants to access Protocol A
-const protocolRequirements = await fetchProtocolRequirements();
+const protocolRequirements = await fetchProtocolRequirements('protocol-a');
 // Returns: { min_age: 21, allowed_jurisdictions: [1], require_accreditation: true }
 ```
 
 ### Step 3: User Generates Proof Matching Requirements
 
 **User Side:**
+
+The user generates a proof that matches the protocol's requirements. The SDK handles this:
+
 ```typescript
-import { NoahSDK, ProtocolRequirements } from 'noah-clarity';
+import { NoahSDK } from 'noah-clarity';
 
 const sdk = new NoahSDK(config, walletConfig);
 
@@ -108,6 +200,9 @@ const proofResponse = await sdk.proof.generateProofForProtocol(
 ### Step 4: User Gets Attestation from Attester
 
 **User Side:**
+
+After generating a proof, the user needs an attestation signature:
+
 ```typescript
 // Request attestation (attester verifies proof internally)
 const attestationResponse = await sdk.proof.requestAttestation({
@@ -126,6 +221,9 @@ const attestationResponse = await sdk.proof.requestAttestation({
 ### Step 5: User Registers/Updates KYC On-Chain
 
 **User Side:**
+
+Finally, the user registers their KYC on-chain:
+
 ```typescript
 // Register KYC on-chain (or update if already registered)
 const txId = await sdk.contract.registerKYC({
@@ -141,6 +239,9 @@ await waitForTransaction(txId);
 ### Step 6: Protocol Checks KYC and Grants Access
 
 **Protocol Side:**
+
+Now the protocol can check if the user has valid KYC:
+
 ```typescript
 // Protocol checks if user has valid KYC
 const hasValidKYC = await sdk.contract.isKYCValid(userAddress);
@@ -155,12 +256,12 @@ if (hasValidKYC) {
 }
 ```
 
-## Simplified Flow (Reusing Existing KYC)
+## Simplified Flow: Reusing Existing KYC
 
-If user already has KYC registered from a previous protocol:
+If a user already has KYC registered from a previous protocol, using a new protocol is much simpler:
 
 ```
-User already has KYC registered on-chain
+User already has KYC registered on-chain (from previous protocol)
    ↓
 User wants to access new Protocol B
    ↓
@@ -169,18 +270,25 @@ Protocol B checks: isKYCValid?(userAddress) → true ✅
 Protocol B grants access (trusts attester verification)
 ```
 
-**Note:** User doesn't need to re-register KYC for each protocol. Once registered, the same KYC works for all protocols.
+**Note:** The user doesn't need to re-register KYC for each protocol. Once registered, the same KYC works for all protocols. This is one of the key benefits of Noah-v2 - users verify once, use everywhere.
 
-## Key Points
+## Key Points to Understand
 
-1. **One-Time Registration**: User registers KYC once, reuses for all protocols
-2. **Protocol Requirements**: Each protocol can define specific requirements (age, jurisdictions, accreditation)
-3. **Proof Generation**: User generates proof matching protocol requirements (on-demand)
-4. **Attester Verification**: Attester verifies proof before signing (happens automatically)
-5. **On-Chain Check**: Protocols just check if user has registered KYC (simple binary check)
-6. **No Protocol Verification**: Protocols don't verify proofs themselves - they trust the attester's verification
+1. **One-Time Registration**: Users register KYC once, then reuse it for all protocols. This is a huge UX improvement over traditional KYC systems.
+
+2. **Protocol Requirements**: Each protocol can define specific requirements (age, jurisdictions, accreditation), but users don't need to register separately for each one. They generate proofs matching each protocol's requirements, but the on-chain registration is shared.
+
+3. **Proof Generation**: Users generate proofs matching protocol requirements on-demand. This happens automatically when users want to use a protocol.
+
+4. **Attester Verification**: Attesters verify proofs before signing. This happens automatically - users don't need to understand the verification process.
+
+5. **On-Chain Check**: Protocols just check if users have registered KYC (simple binary check). They don't verify proofs themselves - they trust the attester's verification.
+
+6. **Privacy Preserved**: Throughout this entire flow, users' actual data (age, location, etc.) is never revealed to protocols. Protocols only learn that users meet their requirements.
 
 ## Visual Flow Diagram
+
+Here's a visual representation of the flow:
 
 ```
 ┌─────────────┐
@@ -217,26 +325,43 @@ Protocol B grants access (trusts attester verification)
 └─────────────┘
 ```
 
-## Example: User Accessing Multiple Protocols
+## Real-World Example: User Accessing Multiple Protocols
+
+Let's see what this looks like for a real user:
 
 ```
-User completes KYC registration once
+Alice completes KYC registration once (Phase 1)
    ↓
-User wants to access Protocol A (requires 21+, US, accredited)
+Alice wants to access Protocol A (requires 21+, US, accredited)
    → Generates proof matching Protocol A requirements
    → Gets attestation
    → Registers on-chain
    → Protocol A checks KYC → Grants access ✅
    ↓
-User wants to access Protocol B (requires 18+, any jurisdiction, no accreditation)
+Alice wants to access Protocol B (requires 18+, any jurisdiction, no accreditation)
    → Already has KYC registered
    → Protocol B checks KYC → Grants access ✅
-   (User doesn't need to re-register)
+   (Alice doesn't need to re-register)
    ↓
-User wants to access Protocol C (requires 25+, specific jurisdictions, accredited)
+Alice wants to access Protocol C (requires 25+, EU/UK only, accredited)
    → Already has KYC registered
    → Protocol C checks KYC → Grants access ✅
 ```
 
-**Important:** Once user has registered KYC on-chain, all protocols can check it. The protocol-specific proof generation is for the initial registration process. After registration, protocols just check on-chain KYC status.
+**Important insight:** Once Alice has registered KYC on-chain, all protocols can check it. The protocol-specific proof generation happens during the initial registration process. After registration, protocols just check on-chain KYC status - a simple, fast operation.
 
+## What This Means for Protocol Developers
+
+As a protocol developer, your job is simple:
+
+1. **Define your requirements** (optional, but recommended)
+2. **Check KYC before allowing actions**: `isKYCValid?(userAddress)`
+3. **Grant or deny access** based on the result
+
+You don't need to:
+- Verify proofs yourself (the attester does this)
+- Store user credential data (users keep this private)
+- Manage KYC registration flows (the SDK handles this)
+- Understand zero-knowledge proofs (the SDK abstracts this away)
+
+Just check if users have valid KYC, and proceed accordingly. It's that simple!

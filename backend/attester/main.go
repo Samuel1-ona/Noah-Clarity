@@ -117,8 +117,8 @@ func main() {
 	}
 
 	signer, err = NewSigner(privateKeyHex, attesterID)
-	if err != nil {
-		log.Fatalf("Failed to create signer: %v", err)
+		if err != nil {
+			log.Fatalf("Failed to create signer: %v", err)
 	}
 
 	log.Printf("Attester ID: %d", signer.GetAttesterID())

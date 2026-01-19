@@ -68,9 +68,9 @@ function App() {
             )}
             {session && (
               <>
-                <Typography variant="body2" sx={{ mr: 2 }}>
-                  {userAddress?.substring(0, 6)}...{userAddress?.substring(userAddress.length - 4)}
-                </Typography>
+              <Typography variant="body2" sx={{ mr: 2 }}>
+                {userAddress?.substring(0, 6)}...{userAddress?.substring(userAddress.length - 4)}
+              </Typography>
                 <Button
                   color="inherit"
                   onClick={disconnectWallet}
