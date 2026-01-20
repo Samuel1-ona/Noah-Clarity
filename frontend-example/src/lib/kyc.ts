@@ -91,9 +91,7 @@ export async function registerKYCWithProtocol(
     throw new Error(attestationResponse.error || 'Attestation failed');
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'kyc.ts:86','message':'Attestation response received','data':{success:attestationResponse.success,commitment:attestationResponse.commitment?.substring(0,20)+'...',commitmentLength:attestationResponse.commitment?.replace('0x','').length/2,signature:attestationResponse.signature?.substring(0,20)+'...',signatureLength:attestationResponse.signature?.replace('0x','').length/2,attesterId:attestationResponse.attester_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion agent log
+
 
   // Parse contract address
   const contractId = SDK_CONFIG.kycRegistryAddress;
@@ -120,9 +118,6 @@ export async function registerKYCWithProtocol(
   const commitmentBuffer = Buffer.from(commitmentHex, 'hex');
   const signatureBuffer = Buffer.from(signatureHex, 'hex');
 
-  // #region agent log
-  fetch('http://127.0.0.1:7249/ingest/b239a7fb-669e-478f-b888-bd46beaadedf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'kyc.ts:112','message':'Transaction parameters before openContractCall','data':{commitmentHex:commitmentHex.substring(0,20)+'...',commitmentLength:commitmentBuffer.length,signatureHex:signatureHex.substring(0,20)+'...',signatureLength:signatureBuffer.length,attesterId:attestationResponse.attester_id,contractAddress,contractName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion agent log
 
   // Use type assertion to work around version mismatch between @stacks/connect (v4.3.2 bundled) 
   // and standalone @stacks/transactions (v6.17.0). Runtime types are compatible.
