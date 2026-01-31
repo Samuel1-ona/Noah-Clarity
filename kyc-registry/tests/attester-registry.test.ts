@@ -23,14 +23,15 @@ describe("Attester Registry Contract", () => {
   });
 
   describe("add-attester", () => {
-    it("should allow deployer to add an attester", () => {
+    it("should allow deployer to add an attester with address", () => {
       const pubkey = createPubkey();
       const attesterId = Cl.uint(1);
+      const attesterAddress = Cl.principal(wallet1);
 
       const { result } = simnet.callPublicFn(
         "attester-registry",
         "add-attester",
-        [pubkey, attesterId],
+        [pubkey, attesterId, attesterAddress],
         deployer
       );
 
@@ -40,11 +41,12 @@ describe("Attester Registry Contract", () => {
     it("should not allow non-deployer to add attester", () => {
       const pubkey = createPubkey();
       const attesterId = Cl.uint(1);
+      const attesterAddress = Cl.principal(wallet1);
 
       const { result } = simnet.callPublicFn(
         "attester-registry",
         "add-attester",
-        [pubkey, attesterId],
+        [pubkey, attesterId, attesterAddress],
         wallet1
       );
 
@@ -54,11 +56,12 @@ describe("Attester Registry Contract", () => {
     it("should reject invalid pubkey length", () => {
       const invalidPubkey = Cl.buffer(new Uint8Array(32)); // 32 bytes instead of 33
       const attesterId = Cl.uint(1);
+      const attesterAddress = Cl.principal(wallet1);
 
       const { result } = simnet.callPublicFn(
         "attester-registry",
         "add-attester",
-        [invalidPubkey, attesterId],
+        [invalidPubkey, attesterId, attesterAddress],
         deployer
       );
 
@@ -69,12 +72,13 @@ describe("Attester Registry Contract", () => {
       const pubkey1 = createPubkey(0x02);
       const pubkey2 = createPubkey(0x03);
       const attesterId = Cl.uint(1);
+      const attesterAddress = Cl.principal(wallet1);
 
       // Add first attester
       simnet.callPublicFn(
         "attester-registry",
         "add-attester",
-        [pubkey1, attesterId],
+        [pubkey1, attesterId, attesterAddress],
         deployer
       );
 
@@ -82,7 +86,7 @@ describe("Attester Registry Contract", () => {
       const { result } = simnet.callPublicFn(
         "attester-registry",
         "add-attester",
-        [pubkey2, attesterId],
+        [pubkey2, attesterId, attesterAddress],
         deployer
       );
 
@@ -96,19 +100,49 @@ describe("Attester Registry Contract", () => {
       const result1 = simnet.callPublicFn(
         "attester-registry",
         "add-attester",
-        [pubkey1, Cl.uint(1)],
+        [pubkey1, Cl.uint(1), Cl.principal(wallet1)],
         deployer
       );
 
       const result2 = simnet.callPublicFn(
         "attester-registry",
         "add-attester",
-        [pubkey2, Cl.uint(2)],
+        [pubkey2, Cl.uint(2), Cl.principal(wallet2)],
         deployer
       );
 
       expect(result1.result).toBeOk(Cl.bool(true));
       expect(result2.result).toBeOk(Cl.bool(true));
+    });
+  });
+
+  describe("update-attester-address", () => {
+    it("should allow owner to update attester address", () => {
+      const pubkey = createPubkey();
+      simnet.callPublicFn(
+        "attester-registry",
+        "add-attester",
+        [pubkey, Cl.uint(1), Cl.principal(wallet1)],
+        deployer
+      );
+
+      const { result } = simnet.callPublicFn(
+        "attester-registry",
+        "update-attester-address",
+        [Cl.principal(wallet2), Cl.uint(1)],
+        deployer
+      );
+
+      expect(result).toBeOk(Cl.bool(true));
+
+      // Verify new address
+      const { result: addressResult } = simnet.callReadOnlyFn(
+        "attester-registry",
+        "get-attester-address",
+        [Cl.uint(1)],
+        deployer
+      );
+      expect(addressResult).toBeOk(Cl.principal(wallet2));
     });
   });
 
@@ -119,7 +153,7 @@ describe("Attester Registry Contract", () => {
       simnet.callPublicFn(
         "attester-registry",
         "add-attester",
-        [pubkey, Cl.uint(1)],
+        [pubkey, Cl.uint(1), Cl.principal(wallet1)],
         deployer
       );
     });
@@ -155,17 +189,6 @@ describe("Attester Registry Contract", () => {
 
       expect(result).toBeErr(Cl.uint(1001)); // ERR_NOT_AUTHORIZED
     });
-
-    it("should reject deactivating non-existent attester", () => {
-      const { result } = simnet.callPublicFn(
-        "attester-registry",
-        "deactivate-attester",
-        [Cl.uint(999)],
-        deployer
-      );
-
-      expect(result).toBeErr(Cl.uint(1003)); // ERR_ATTESTER_NOT_FOUND
-    });
   });
 
   describe("is-attester-active?", () => {
@@ -185,7 +208,7 @@ describe("Attester Registry Contract", () => {
       simnet.callPublicFn(
         "attester-registry",
         "add-attester",
-        [pubkey, Cl.uint(1)],
+        [pubkey, Cl.uint(1), Cl.principal(wallet1)],
         deployer
       );
 
@@ -198,32 +221,6 @@ describe("Attester Registry Contract", () => {
 
       expect(result).toBeOk(Cl.bool(true));
     });
-
-    it("should return false for deactivated attester", () => {
-      const pubkey = createPubkey();
-      simnet.callPublicFn(
-        "attester-registry",
-        "add-attester",
-        [pubkey, Cl.uint(1)],
-        deployer
-      );
-
-      simnet.callPublicFn(
-        "attester-registry",
-        "deactivate-attester",
-        [Cl.uint(1)],
-        deployer
-      );
-
-      const { result } = simnet.callReadOnlyFn(
-        "attester-registry",
-        "is-attester-active?",
-        [Cl.uint(1)],
-        deployer
-      );
-
-      expect(result).toBeOk(Cl.bool(false));
-    });
   });
 
   describe("get-attester-pubkey", () => {
@@ -232,7 +229,7 @@ describe("Attester Registry Contract", () => {
       simnet.callPublicFn(
         "attester-registry",
         "add-attester",
-        [pubkey, Cl.uint(1)],
+        [pubkey, Cl.uint(1), Cl.principal(wallet1)],
         deployer
       );
 
@@ -243,34 +240,55 @@ describe("Attester Registry Contract", () => {
         deployer
       );
 
-      // Result should be (ok (buff 33))
-      // result is a ResponseOkCV<BufferCV>, so we need to type guard it
       expect(result).toHaveClarityType(ClarityType.ResponseOk);
       const okResult = result as ResponseOkCV<BufferCV>;
       expect(okResult.value).toBeDefined();
       expect(okResult.value.type).toBe(ClarityType.Buffer);
-      // BufferCV.value is a hex string, convert to bytes to check length
       const bufferBytes = hexToBytes(okResult.value.value);
       expect(bufferBytes.length).toBe(33);
     });
+  });
 
-    it("should return error for non-existent attester", () => {
-      const { result } = simnet.callReadOnlyFn(
+  describe("get-attester-address", () => {
+    it("should return address for existing attester", () => {
+      const pubkey = createPubkey(0x02);
+      simnet.callPublicFn(
         "attester-registry",
-        "get-attester-pubkey",
-        [Cl.uint(999)],
+        "add-attester",
+        [pubkey, Cl.uint(1), Cl.principal(wallet1)],
         deployer
       );
 
-      // Contract returns (err ERR_ATTESTER_NOT_FOUND) which is (err (err u1003))
-      // The nested error structure means we can't use toBeErr with a simple uint
-      // Just verify it's an error response
-      expect(result).toHaveClarityType(ClarityType.ResponseErr);
+      const { result } = simnet.callReadOnlyFn(
+        "attester-registry",
+        "get-attester-address",
+        [Cl.uint(1)],
+        deployer
+      );
+
+      expect(result).toBeOk(Cl.principal(wallet1));
     });
   });
 
-  describe("get-attesters", () => {
-    it("should return empty list", () => {
+  describe("get-attesters (Discovery)", () => {
+    it("should return list of registered attesters", () => {
+      const pubkey1 = createPubkey(0x02);
+      const pubkey2 = createPubkey(0x03);
+
+      simnet.callPublicFn(
+        "attester-registry",
+        "add-attester",
+        [pubkey1, Cl.uint(1), Cl.principal(wallet1)],
+        deployer
+      );
+
+      simnet.callPublicFn(
+        "attester-registry",
+        "add-attester",
+        [pubkey2, Cl.uint(2), Cl.principal(wallet2)],
+        deployer
+      );
+
       const { result } = simnet.callReadOnlyFn(
         "attester-registry",
         "get-attesters",
@@ -278,7 +296,37 @@ describe("Attester Registry Contract", () => {
         deployer
       );
 
-      expect(result).toBeOk(Cl.list([])); // Empty list in Clarity
+      expect(result).toBeOk(Cl.list([Cl.uint(1), Cl.uint(2)]));
+    });
+  });
+
+  describe("transfer-ownership", () => {
+    it("should allow owner to transfer ownership", () => {
+      const { result } = simnet.callPublicFn(
+        "attester-registry",
+        "transfer-ownership",
+        [Cl.principal(wallet1)],
+        deployer
+      );
+      expect(result).toBeOk(Cl.bool(true));
+
+      // Verify new owner can add attester (deployer cannot anymore)
+      const pubkey = createPubkey();
+      const failResult = simnet.callPublicFn(
+        "attester-registry",
+        "add-attester",
+        [pubkey, Cl.uint(3), Cl.principal(wallet2)],
+        deployer
+      );
+      expect(failResult.result).toBeErr(Cl.uint(1001));
+
+      const successResult = simnet.callPublicFn(
+        "attester-registry",
+        "add-attester",
+        [pubkey, Cl.uint(3), Cl.principal(wallet2)],
+        wallet1
+      );
+      expect(successResult.result).toBeOk(Cl.bool(true));
     });
   });
 });

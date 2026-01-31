@@ -1,7 +1,8 @@
 ;; KYC Registry Contract
 ;; Stores user KYC commitments and verifies attestation signatures
 
-(define-constant contract-owner tx-sender)
+;; Owner of the contract
+(define-data-var contract-owner principal tx-sender)
 
 ;; (use-trait attester .attester-registry-trait.attester-registry-trait)
 
@@ -22,7 +23,7 @@
 
 ;; Register KYC for a user
 ;; Stores a user's KYC commitment after verifying the attestation signature
-;; KYC records are permanent until explicitly revoked by the contract owner
+;; KYC records are permanent until explicitly revoked by the contract owner or issuing attester
 ;; 
 ;; @param commitment - 32-byte hash commitment of user's identity data (SHA-256 hash)
 ;; @param signature - 64 or 65-byte ECDSA signature (r || s || optional v format) from the attester
@@ -83,6 +84,15 @@
   )
 )
 
+;; Transfer ownership of the contract
+(define-public (transfer-ownership (new-owner principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR_NOT_AUTHORIZED)
+    (var-set contract-owner new-owner)
+    (ok true)
+  )
+)
+
 ;; Check if a user has registered KYC
 ;; 
 ;; @param user - Stacks principal address of the user to check
@@ -139,30 +149,37 @@
 )
 
 ;; Revoke KYC for a user
-;; Only the contract owner can revoke KYC records
-;; Used for compliance, fraud prevention, or when a user's KYC status changes
+;; Can be called by:
+;; 1. The contract owner (admin revocation)
+;; 2. The attester who issued the credential (issuer revocation)
 ;; 
 ;; @param user - Stacks principal address of the user whose KYC should be revoked
 ;; @return (ok true) on successful revocation
-;; @error ERR_NOT_AUTHORIZED (u2000) - If caller is not the contract owner
+;; @error ERR_NOT_AUTHORIZED (u2000) - If caller is not the contract owner AND not the issuing attester
 ;; @error ERR_KYC_NOT_FOUND (u2003) - If user has no KYC record to revoke
 ;; 
 ;; Side effects:
 ;; - Permanently removes the KYC record from the registry
 ;; - User will no longer pass has-kyc? or is-kyc-valid? checks
 ;; - User must re-register KYC to restore access
-;; 
-;; Note: Revocation is permanent and cannot be undone automatically.
-;; If needed, the user must go through the full KYC registration process again.
 (define-public (revoke-kyc (user principal))
-  (begin
-    (asserts! (is-eq tx-sender contract-owner) ERR_NOT_AUTHORIZED)
-    (match (map-get? kyc-registry { user: user })
-      kyc-record (begin
+  (match (map-get? kyc-registry { user: user })
+    kyc-record (let ((attester-id (get attester-id kyc-record)))
+      (begin
+        ;; Check authorization: must be contract owner OR the attester who issued the credential
+        (asserts! (or 
+          (is-eq tx-sender (var-get contract-owner))
+          (is-eq tx-sender (unwrap-panic (contract-call? .attester-registry get-attester-address attester-id)))
+        ) ERR_NOT_AUTHORIZED)
+        
         (map-delete kyc-registry { user: user })
         (ok true)
       )
-      ERR_KYC_NOT_FOUND
     )
+    ERR_KYC_NOT_FOUND
   )
+)
+
+(define-read-only (get-contract-owner)
+  (ok (var-get contract-owner))
 )
