@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
-	"math/big"
 	"os"
 	"path/filepath"
 	"time"
@@ -39,17 +38,22 @@ func NewCircuitManager() *CircuitManager {
 func (cm *CircuitManager) Initialize() error {
 	// Compile the circuit
 	// Note: gnark requires fixed-size arrays for compilation
-	// We use a reasonable maximum (e.g., 250 jurisdictions as discussed)
-	// The actual number used in proofs can be less than this
-	maxJurisdictions := 250
-	allowedJurisdictions := make([]frontend.Variable, maxJurisdictions)
-	for i := range allowedJurisdictions {
-		allowedJurisdictions[i] = 0 // Placeholder values for compilation
-	}
-	
+	// We use Merkle proofs for jurisdiction verification (depth 20 supports up to 2^20 = 1M jurisdictions)
+	merkleDepth := 20
+
 	kycCircuit := &circuit.KYCCircuit{
-		MinAge:               0, // Placeholder, will be set per request
-		AllowedJurisdictions: allowedJurisdictions,
+		// Private inputs
+		Age:          0,
+		Jurisdiction: 0,
+		IsAccredited: 0,
+		IdentityData: 0,
+		Nonce:        0,
+		// Merkle proof fields
+		MerklePath:   make([]frontend.Variable, merkleDepth),
+		MerkleHelper: make([]frontend.Variable, merkleDepth),
+		// Public inputs
+		MinAge:               0,
+		JurisdictionRoot:     0,
 		RequireAccreditation: 0,
 		Commitment:           0,
 	}
@@ -132,21 +136,8 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 	}
 
 	// Create witness from request
-	// The circuit was compiled with maxJurisdictions (250), so we need to pad
-	// the AllowedJurisdictions array to match the compiled structure
-	maxJurisdictions := 250
-	allowedJurisdictions := make([]frontend.Variable, maxJurisdictions)
-	
-	// Copy the provided jurisdictions
-	for i := range allowedJurisdictions {
-		if i < len(req.AllowedJurisdictions) {
-			allowedJurisdictions[i] = req.AllowedJurisdictions[i].Int
-		} else {
-			// Pad with 0 for unused slots (circuit uses len() so padding won't affect logic)
-			allowedJurisdictions[i] = big.NewInt(0)
-		}
-	}
-	
+	// The circuit now uses Merkle proofs for jurisdiction verification
+
 	// Compute the commitment from identity data and nonce (matches circuit logic)
 	// The circuit computes: MiMC(IdentityData || Nonce)
 	computedCommitment, err := computeCommitment(req.IdentityData.Int, req.Nonce.Int)
@@ -156,22 +147,22 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 			Error:   fmt.Sprintf("failed to compute commitment: %v", err),
 		}, err
 	}
-	
+
 	witnessData := &circuit.KYCCircuit{
-		Age:            req.Age.Int,
-		Jurisdiction:   req.Jurisdiction.Int,
-		IsAccredited:   req.IsAccredited.Int,
-		IdentityData:   req.IdentityData.Int,
-		Nonce:          req.Nonce.Int,
-		MinAge:         req.MinAge.Int,
-		AllowedJurisdictions: allowedJurisdictions,
+		// Private inputs
+		Age:          req.Age.Int,
+		Jurisdiction: req.Jurisdiction.Int,
+		IsAccredited: req.IsAccredited.Int,
+		IdentityData: req.IdentityData.Int,
+		Nonce:        req.Nonce.Int,
+		// Merkle proof fields (must be provided in request)
+		MerklePath:   req.MerklePath,
+		MerkleHelper: req.MerkleHelper,
+		// Public inputs
+		MinAge:               req.MinAge.Int,
+		JurisdictionRoot:     req.JurisdictionRoot.Int,
 		RequireAccreditation: req.RequireAccreditation.Int,
-		Commitment:     computedCommitment, // Use computed commitment instead of provided one
-		AgeVerified:    1, // Will be computed by circuit
-		JurisdictionVerified: 1,
-		AccreditationVerified: 1,
-		IdentityVerified: 1,
-		OverallVerified: 1,
+		Commitment:           computedCommitment, // Use computed commitment
 	}
 
 	// Create full witness (with both private and public inputs)
@@ -214,11 +205,9 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 	}
 
 	// Extract public inputs from witness in the correct order
-	// Public inputs are: MinAge, AllowedJurisdictions (each as separate input), 
-	// RequireAccreditation, Commitment, AgeVerified, JurisdictionVerified, 
-	// AccreditationVerified, IdentityVerified, OverallVerified
+	// New optimized circuit public inputs: MinAge, JurisdictionRoot, RequireAccreditation, Commitment
 	publicInputs := make([]string, 0)
-	
+
 	// padHex ensures hex string is even length by padding with leading zero if needed
 	padHex := func(s string) string {
 		if len(s)%2 == 1 {
@@ -226,84 +215,35 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 		}
 		return s
 	}
-	
+
 	// #region agent log
 	logFile, _ := os.OpenFile("/Users/machine/Documents/Noah-v2/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	logEntry := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"circuit.go:229","message":"Starting public inputs construction","data":{"maxJurisdictions":%d,"reqJurisdictionsCount":%d,"computedCommitmentHex":"%s"},"timestamp":%d}`+"\n", maxJurisdictions, len(req.AllowedJurisdictions), padHex(computedCommitment.Text(16)), time.Now().UnixMilli())
+	logEntry := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"circuit.go:229","message":"Starting public inputs construction (optimized)","data":{"computedCommitmentHex":"%s"},"timestamp":%d}`+"\n", padHex(computedCommitment.Text(16)), time.Now().UnixMilli())
 	logFile.WriteString(logEntry)
 	// #endregion agent log
-	
+
 	// Add MinAge
 	minAgeHex := padHex(req.MinAge.Int.Text(16))
 	publicInputs = append(publicInputs, minAgeHex)
-	
-	// #region agent log
-	logEntry = fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"circuit.go:236","message":"Added MinAge","data":{"minAgeHex":"%s","publicInputsCount":%d},"timestamp":%d}`+"\n", minAgeHex, len(publicInputs), time.Now().UnixMilli())
-	logFile.WriteString(logEntry)
-	// #endregion agent log
-	
-	// Add ALL 250 AllowedJurisdictions as separate public inputs (matches compiled circuit)
-	// The circuit was compiled with 250 jurisdictions, so we must send all 250
-	// Use the allowedJurisdictions array that was used in the witness (already padded)
-	for i := 0; i < maxJurisdictions; i++ {
-		jurisdictionValue, ok := allowedJurisdictions[i].(*big.Int)
-		if !ok {
-			// Fallback to zero if type assertion fails (shouldn't happen)
-			jurisdictionValue = big.NewInt(0)
-		}
-		jurisdictionHex := padHex(jurisdictionValue.Text(16))
-		publicInputs = append(publicInputs, jurisdictionHex)
-		if i < 3 || i >= 247 {
-			// #region agent log
-			logEntry = fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"circuit.go:250","message":"Added jurisdiction","data":{"index":%d,"value":"%s","hex":"%s"},"timestamp":%d}`+"\n", i, jurisdictionValue.String(), jurisdictionHex, time.Now().UnixMilli())
-			logFile.WriteString(logEntry)
-			// #endregion agent log
-		}
-	}
-	
-	// #region agent log
-	logEntry = fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"circuit.go:255","message":"After jurisdictions","data":{"publicInputsCount":%d},"timestamp":%d}`+"\n", len(publicInputs), time.Now().UnixMilli())
-	logFile.WriteString(logEntry)
-	// #endregion agent log
-	
+
+	// Add JurisdictionRoot
+	jurisdictionRootHex := padHex(req.JurisdictionRoot.Int.Text(16))
+	publicInputs = append(publicInputs, jurisdictionRootHex)
+
 	// Add RequireAccreditation
 	requireAccredHex := padHex(req.RequireAccreditation.Int.Text(16))
 	publicInputs = append(publicInputs, requireAccredHex)
-	
+
 	// Add Commitment (use computed commitment)
 	commitmentHex := padHex(computedCommitment.Text(16))
 	publicInputs = append(publicInputs, commitmentHex)
-	
-	// Add public outputs (all computed outputs should be 1 if verification passes)
-	// In gnark Groth16, ALL public fields (inputs + outputs) must be in the public witness
-	publicInputs = append(publicInputs, padHex(big.NewInt(1).Text(16))) // AgeVerified
-	publicInputs = append(publicInputs, padHex(big.NewInt(1).Text(16))) // JurisdictionVerified
-	publicInputs = append(publicInputs, padHex(big.NewInt(1).Text(16))) // AccreditationVerified
-	publicInputs = append(publicInputs, padHex(big.NewInt(1).Text(16))) // IdentityVerified
-	publicInputs = append(publicInputs, padHex(big.NewInt(1).Text(16))) // OverallVerified
-	
+
 	// #region agent log
-	logEntry = fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"circuit.go:278","message":"Final public inputs","data":{"totalCount":%d,"requireAccredHex":"%s","commitmentHex":"%s"},"timestamp":%d}`+"\n", len(publicInputs), requireAccredHex, commitmentHex, time.Now().UnixMilli())
-	logFile.WriteString(logEntry)
-	// Log sample public inputs for comparison (first 3, last 3)
-	sampleInputs := []string{}
-	if len(publicInputs) >= 3 {
-		sampleInputs = append(sampleInputs, publicInputs[0], publicInputs[1], publicInputs[2])
-	}
-	if len(publicInputs) >= 6 {
-		sampleInputs = append(sampleInputs, publicInputs[len(publicInputs)-3], publicInputs[len(publicInputs)-2], publicInputs[len(publicInputs)-1])
-	}
-	logEntry2 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"circuit.go:287","message":"Sample public inputs","data":{"first3":["%s","%s","%s"],"last3":["%s","%s","%s"]},"timestamp":%d}`+"\n", 
-		publicInputs[0], publicInputs[1], publicInputs[2], 
-		publicInputs[len(publicInputs)-3], publicInputs[len(publicInputs)-2], publicInputs[len(publicInputs)-1],
-		time.Now().UnixMilli())
+	logEntry2 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"circuit.go:278","message":"Final public inputs (optimized)","data":{"totalCount":%d,"minAge":"%s","jurisdictionRoot":"%s","requireAccred":"%s","commitment":"%s"},"timestamp":%d}`+"\n", len(publicInputs), minAgeHex, jurisdictionRootHex, requireAccredHex, commitmentHex, time.Now().UnixMilli())
 	logFile.WriteString(logEntry2)
 	logFile.Close()
 	// #endregion agent log
-	
-	// Note: Verification result outputs (AgeVerified, etc.) are also public outputs
-	// but are computed by the circuit, not provided as inputs
-	
+
 	_ = publicWitness // Use publicWitness for verification later
 
 	// padHex ensures hex string is even length (defined earlier in function)
@@ -396,4 +336,3 @@ func (cm *CircuitManager) SaveKeys(provingKeyPath, verifyingKeyPath string) erro
 
 	return nil
 }
-

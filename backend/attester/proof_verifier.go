@@ -41,16 +41,23 @@ func (pv *ProofVerifier) Initialize() error {
 	}
 
 	// Compile the circuit (same as prover)
-	// Must match the prover's compilation with 250 jurisdictions
-	maxJurisdictions := 250
-	allowedJurisdictions := make([]frontend.Variable, maxJurisdictions)
-	for i := range allowedJurisdictions {
-		allowedJurisdictions[i] = 0 // Placeholder values for compilation
-	}
-	
+	// Must match the prover's compilation with Merkle proof structure
+	// Assume depth 20 for Merkle tree (supports up to 2^20 = 1M jurisdictions)
+	merkleDepth := 20
+
 	kycCircuit := &circuit.KYCCircuit{
-		MinAge:               0, // Placeholder for compilation
-		AllowedJurisdictions: allowedJurisdictions,
+		// Private inputs
+		Age:          0,
+		Jurisdiction: 0,
+		IsAccredited: 0,
+		IdentityData: 0,
+		Nonce:        0,
+		// Merkle proof fields
+		MerklePath:   make([]frontend.Variable, merkleDepth),
+		MerkleHelper: make([]frontend.Variable, merkleDepth),
+		// Public inputs
+		MinAge:               0,
+		JurisdictionRoot:     0,
 		RequireAccreditation: 0,
 		Commitment:           0,
 	}
@@ -156,17 +163,20 @@ func (pv *ProofVerifier) VerifyProof(proofBase64 string, publicInputs []string) 
 }
 
 // reconstructPublicWitness reconstructs the circuit structure from public inputs
-// Public inputs order: MinAge, AllowedJurisdictions..., RequireAccreditation, Commitment
+// Public inputs order: MinAge, JurisdictionRoot, RequireAccreditation, Commitment
 func (pv *ProofVerifier) reconstructPublicWitness(publicInputs []string) (*circuit.KYCCircuit, error) {
 	// #region agent log
 	logFile, _ := os.OpenFile("/Users/machine/Documents/Noah-v2/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	logEntry := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"proof_verifier.go:150","message":"Reconstructing witness","data":{"publicInputsCount":%d,"firstInput":"%s","lastInput":"%s"},"timestamp":%d}`+"\n", len(publicInputs), publicInputs[0], publicInputs[len(publicInputs)-1], time.Now().UnixMilli())
 	logFile.WriteString(logEntry)
 	// #endregion agent log
-	
-	if len(publicInputs) < 4 {
+
+	// New optimized circuit structure:
+	// Public inputs: [MinAge, JurisdictionRoot, RequireAccreditation, Commitment]
+	expectedInputs := 4
+	if len(publicInputs) != expectedInputs {
 		logFile.Close()
-		return nil, fmt.Errorf("insufficient public inputs: expected at least 4, got %d", len(publicInputs))
+		return nil, fmt.Errorf("invalid public inputs: expected %d inputs (MinAge, JurisdictionRoot, RequireAccreditation, Commitment), got %d", expectedInputs, len(publicInputs))
 	}
 
 	// Parse MinAge (first input)
@@ -177,127 +187,42 @@ func (pv *ProofVerifier) reconstructPublicWitness(publicInputs []string) (*circu
 	}
 	minAge := new(big.Int).SetBytes(minAgeBytes)
 
-	// Parse AllowedJurisdictions
-	// Public inputs structure: [MinAge, ...250 Jurisdictions..., RequireAccreditation, Commitment, AgeVerified, JurisdictionVerified, AccreditationVerified, IdentityVerified, OverallVerified]
-	// The circuit was compiled with maxJurisdictions = 250, so we expect exactly 250 jurisdiction inputs
-	// Plus 5 public outputs (all verification results)
-	maxJurisdictions := 250 // Must match the circuit compilation
-	expectedTotalInputs := 1 + maxJurisdictions + 2 + 5 // MinAge + 250 Jurisdictions + RequireAccreditation + Commitment + 5 outputs
-	
-	// #region agent log
-	logEntry2 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"proof_verifier.go:157","message":"Checking input count","data":{"expected":%d,"got":%d,"minAgeHex":"%s"},"timestamp":%d}`+"\n", expectedTotalInputs, len(publicInputs), publicInputs[0], time.Now().UnixMilli())
-	logFile.WriteString(logEntry2)
-	// #endregion agent log
-	
-	if len(publicInputs) != expectedTotalInputs {
+	// Parse JurisdictionRoot (second input)
+	jurisdictionRootBytes, err := hex.DecodeString(publicInputs[1])
+	if err != nil {
 		logFile.Close()
-		return nil, fmt.Errorf("invalid public inputs: expected %d inputs (1 MinAge + 250 Jurisdictions + 1 RequireAccreditation + 1 Commitment + 5 outputs), got %d", expectedTotalInputs, len(publicInputs))
+		return nil, fmt.Errorf("invalid JurisdictionRoot hex: %w", err)
 	}
-	
-	// Create array with maxJurisdictions size (matches compiled circuit)
-	allowedJurisdictions := make([]frontend.Variable, maxJurisdictions)
-	
-	// Parse all 250 jurisdictions from public inputs
-	for i := 0; i < maxJurisdictions; i++ {
-		jBytes, err := hex.DecodeString(publicInputs[1+i])
-		if err != nil {
-			logFile.Close()
-			return nil, fmt.Errorf("invalid jurisdiction %d hex: %w", i, err)
-		}
-		jurisdictionValue := new(big.Int).SetBytes(jBytes)
-		allowedJurisdictions[i] = jurisdictionValue
-		if i < 3 || i >= 247 {
-			// #region agent log
-			logEntry3 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"proof_verifier.go:172","message":"Parsed jurisdiction","data":{"index":%d,"value":"%s","hex":"%s"},"timestamp":%d}`+"\n", i, jurisdictionValue.String(), publicInputs[1+i], time.Now().UnixMilli())
-			logFile.WriteString(logEntry3)
-			// #endregion agent log
-		}
-	}
+	jurisdictionRoot := new(big.Int).SetBytes(jurisdictionRootBytes)
 
-	// Parse RequireAccreditation (before Commitment, which is before the 5 outputs)
-	requireAccredIndex := len(publicInputs) - 7 // 5 outputs + 1 Commitment before RequireAccreditation
-	requireAccredBytes, err := hex.DecodeString(publicInputs[requireAccredIndex])
+	// Parse RequireAccreditation (third input)
+	requireAccredBytes, err := hex.DecodeString(publicInputs[2])
 	if err != nil {
 		logFile.Close()
 		return nil, fmt.Errorf("invalid RequireAccreditation hex: %w", err)
 	}
 	requireAccred := new(big.Int).SetBytes(requireAccredBytes)
-	
-	// #region agent log
-	logEntry4 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"proof_verifier.go:227","message":"Parsed RequireAccreditation","data":{"value":"%s","hex":"%s"},"timestamp":%d}`+"\n", requireAccred.String(), publicInputs[requireAccredIndex], time.Now().UnixMilli())
-	logFile.WriteString(logEntry4)
-	// #endregion agent log
 
-	// Parse Commitment (second to last input, before the 5 outputs)
-	commitmentIndex := len(publicInputs) - 6 // Last 5 are outputs
-	commitmentBytes, err := hex.DecodeString(publicInputs[commitmentIndex])
+	// Parse Commitment (fourth input)
+	commitmentBytes, err := hex.DecodeString(publicInputs[3])
 	if err != nil {
 		logFile.Close()
 		return nil, fmt.Errorf("invalid Commitment hex: %w", err)
 	}
 	commitment := new(big.Int).SetBytes(commitmentBytes)
-	
-	// Parse public outputs (last 5 inputs)
-	parseOutput := func(index int, name string) (*big.Int, error) {
-		bytes, err := hex.DecodeString(publicInputs[index])
-		if err != nil {
-			return nil, fmt.Errorf("invalid %s hex: %w", name, err)
-		}
-		return new(big.Int).SetBytes(bytes), nil
-	}
-	
-	ageVerified, err := parseOutput(len(publicInputs)-5, "AgeVerified")
-	if err != nil {
-		logFile.Close()
-		return nil, err
-	}
-	jurisdictionVerified, err := parseOutput(len(publicInputs)-4, "JurisdictionVerified")
-	if err != nil {
-		logFile.Close()
-		return nil, err
-	}
-	accreditationVerified, err := parseOutput(len(publicInputs)-3, "AccreditationVerified")
-	if err != nil {
-		logFile.Close()
-		return nil, err
-	}
-	identityVerified, err := parseOutput(len(publicInputs)-2, "IdentityVerified")
-	if err != nil {
-		logFile.Close()
-		return nil, err
-	}
-	overallVerified, err := parseOutput(len(publicInputs)-1, "OverallVerified")
-	if err != nil {
-		logFile.Close()
-		return nil, err
-	}
-	
+
 	// #region agent log
-	logEntry5 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"proof_verifier.go:218","message":"Parsed Commitment","data":{"value":"%s","hex":"%s","hexLength":%d},"timestamp":%d}`+"\n", commitment.String(), publicInputs[commitmentIndex], len(publicInputs[commitmentIndex]), time.Now().UnixMilli())
-	logFile.WriteString(logEntry5)
-	// Log parsed minAge for comparison
-	logEntryMinAge := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"proof_verifier.go:222","message":"Parsed MinAge","data":{"value":"%s","hex":"%s","hexLength":%d},"timestamp":%d}`+"\n", minAge.String(), publicInputs[0], len(publicInputs[0]), time.Now().UnixMilli())
-	logFile.WriteString(logEntryMinAge)
+	logEntry2 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"proof_verifier.go:218","message":"Parsed all public inputs","data":{"minAge":"%s","jurisdictionRoot":"%s","requireAccred":"%s","commitment":"%s"},"timestamp":%d}`+"\n", minAge.String(), jurisdictionRoot.String(), requireAccred.String(), commitment.String(), time.Now().UnixMilli())
+	logFile.WriteString(logEntry2)
+	logFile.Close()
 	// #endregion agent log
 
 	// Create circuit structure with public input fields set
-	// Output fields are parsed from public inputs (they're part of the public witness in gnark Groth16)
-	// #region agent log
-	logEntry6 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"proof_verifier.go:250","message":"Creating witness structure","data":{"minAge":"%s","jurisdictionsCount":%d,"requireAccred":"%s","commitment":"%s","outputs":"%s,%s,%s,%s,%s"},"timestamp":%d}`+"\n", minAge.String(), len(allowedJurisdictions), requireAccred.String(), commitment.String(), ageVerified.String(), jurisdictionVerified.String(), accreditationVerified.String(), identityVerified.String(), overallVerified.String(), time.Now().UnixMilli())
-	logFile.WriteString(logEntry6)
-	logFile.Close()
-	// #endregion agent log
+	// Note: Private inputs and Merkle proof fields are not part of public witness
 	return &circuit.KYCCircuit{
 		MinAge:               minAge,
-		AllowedJurisdictions: allowedJurisdictions,
+		JurisdictionRoot:     jurisdictionRoot,
 		RequireAccreditation: requireAccred,
 		Commitment:           commitment,
-		// Public output fields parsed from inputs
-		AgeVerified:           ageVerified,
-		JurisdictionVerified:  jurisdictionVerified,
-		AccreditationVerified: accreditationVerified,
-		IdentityVerified:      identityVerified,
-		OverallVerified:       overallVerified,
 	}, nil
 }
-

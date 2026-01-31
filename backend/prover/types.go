@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+
+	"github.com/consensys/gnark/frontend"
 )
 
 // BigIntString is a wrapper for big.Int that unmarshals from JSON strings
@@ -16,13 +18,13 @@ type BigIntString struct {
 func (b *BigIntString) UnmarshalJSON(data []byte) error {
 	// Remove quotes if present
 	str := strings.Trim(string(data), `"`)
-	
+
 	// Handle empty string or null
 	if str == "" || str == "null" {
 		b.Int = big.NewInt(0)
 		return nil
 	}
-	
+
 	b.Int = new(big.Int)
 	_, ok := b.Int.SetString(str, 10)
 	if !ok {
@@ -57,26 +59,30 @@ func (b BigIntString) MarshalJSON() ([]byte, error) {
 // ProofRequest represents a request to generate a proof
 type ProofRequest struct {
 	// Private witness data
-	Age            BigIntString   `json:"age"`
-	Jurisdiction   BigIntString   `json:"jurisdiction"`
-	IsAccredited   BigIntString   `json:"is_accredited"`
-	IdentityData   BigIntString   `json:"identity_data"`
-	Nonce          BigIntString   `json:"nonce"`
+	Age          BigIntString `json:"age"`
+	Jurisdiction BigIntString `json:"jurisdiction"`
+	IsAccredited BigIntString `json:"is_accredited"`
+	IdentityData BigIntString `json:"identity_data"`
+	Nonce        BigIntString `json:"nonce"`
+
+	// Merkle proof fields (private)
+	MerklePath   []frontend.Variable `json:"merkle_path"`
+	MerkleHelper []frontend.Variable `json:"merkle_helper"`
 
 	// Public inputs
-	MinAge                BigIntString    `json:"min_age"`
-	AllowedJurisdictions  []BigIntString  `json:"allowed_jurisdictions"`
-	RequireAccreditation  BigIntString    `json:"require_accreditation"`
-	Commitment            BigIntString    `json:"commitment"`
+	MinAge               BigIntString `json:"min_age"`
+	JurisdictionRoot     BigIntString `json:"jurisdiction_root"`
+	RequireAccreditation BigIntString `json:"require_accreditation"`
+	Commitment           BigIntString `json:"commitment"`
 }
 
 // ProofResponse represents the generated proof and public inputs
 type ProofResponse struct {
-	Proof       string   `json:"proof"`        // Serialized proof
+	Proof        string   `json:"proof"`         // Serialized proof
 	PublicInputs []string `json:"public_inputs"` // Public inputs as hex strings
-	Commitment  string   `json:"commitment"`   // Commitment hash
-	Success     bool     `json:"success"`
-	Error       string   `json:"error,omitempty"`
+	Commitment   string   `json:"commitment"`    // Commitment hash
+	Success      bool     `json:"success"`
+	Error        string   `json:"error,omitempty"`
 }
 
 // CircuitConfig holds circuit configuration
