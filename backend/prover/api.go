@@ -10,12 +10,14 @@ import (
 // API handles HTTP requests for proof generation
 type API struct {
 	circuitManager *CircuitManager
+	worker         *JobWorker
 }
 
 // NewAPI creates a new API handler
-func NewAPI() *API {
+func NewAPI(cm *CircuitManager, jw *JobWorker) *API {
 	return &API{
-		circuitManager: NewCircuitManager(),
+		circuitManager: cm,
+		worker:         jw,
 	}
 }
 
@@ -24,55 +26,42 @@ func (api *API) Initialize() error {
 	return api.circuitManager.Initialize()
 }
 
-// GenerateProof handles proof generation requests
+// GenerateProof handles proof generation requests (Async)
 func (api *API) GenerateProof(c *gin.Context) {
 	var req ProofRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ProofResponse{
+		c.JSON(http.StatusBadRequest, JobResponse{
 			Success: false,
-			Error:   "Invalid request: " + err.Error(),
 		})
 		return
 	}
 
 	// Validate request
 	if err := validateProofRequest(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ProofResponse{
-			Success: false,
-			Error:   "Validation failed: " + err.Error(),
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Generate proof
-	response, err := api.circuitManager.GenerateProof(&req)
-	if err != nil {
-		// Log the error for debugging
-		fmt.Printf("ERROR: GenerateProof failed: %v\n", err)
-		if response != nil && response.Error != "" {
-			fmt.Printf("ERROR: Response error: %s\n", response.Error)
-			c.JSON(http.StatusInternalServerError, ProofResponse{
-				Success: false,
-				Error:   "Proof generation failed: " + response.Error,
-			})
-		} else {
-			c.JSON(http.StatusInternalServerError, ProofResponse{
-				Success: false,
-				Error:   "Proof generation failed: " + err.Error(),
-			})
-		}
-		return
-	}
-	if response != nil && !response.Success {
-		fmt.Printf("ERROR: Proof generation returned failure: %s\n", response.Error)
-		c.JSON(http.StatusInternalServerError, ProofResponse{
-			Success: false,
-			Error:   response.Error,
-		})
+	// Submit job to worker
+	jobID := api.worker.Submit(&req)
+
+	c.JSON(http.StatusAccepted, JobResponse{
+		JobID:   jobID,
+		Status:  "pending",
+		Success: true,
+	})
+}
+
+// GetJobStatus returns the status of a proof generation job
+func (api *API) GetJobStatus(c *gin.Context) {
+	jobID := c.Param("id")
+	status, ok := api.worker.GetStatus(jobID)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, status)
 }
 
 // HealthCheck returns service health status
