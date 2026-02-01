@@ -85,10 +85,10 @@ export class KYCContract {
 
     try {
       const transaction = await makeContractCall(txOptions);
-      
+
       try {
-      const broadcastResponse = await broadcastTransaction(transaction, this.network);
-      return broadcastResponse.txid;
+        const broadcastResponse = await broadcastTransaction(transaction, this.network);
+        return broadcastResponse.txid;
       } catch (broadcastError: any) {
         // Log the error immediately with console.error to ensure we see it
         console.error('broadcastTransaction error:', broadcastError);
@@ -109,7 +109,7 @@ export class KYCContract {
           return String(obj);
         }
       };
-      
+
       // Helper function to safely extract error data (handles BigInt)
       const safeExtract = (obj: any): any => {
         if (obj === null || obj === undefined) return obj;
@@ -135,16 +135,16 @@ export class KYCContract {
         }
         return result;
       };
-      
+
       // Capture detailed error information
       let errorMessage = 'Transaction failed';
       let errorDetails: any = {};
-      
+
       if (error instanceof Error) {
         errorMessage = error.message;
         errorDetails.message = error.message;
       }
-      
+
       // Try to extract API response details (safely handle BigInt)
       if (error?.error) {
         errorDetails.apiError = typeof error.error === 'string' ? error.error : safeExtract(error.error);
@@ -170,7 +170,7 @@ export class KYCContract {
       }
       if (error?.status) errorDetails.status = error.status;
       if (error?.statusText) errorDetails.statusText = error.statusText;
-      
+
       // Try to extract response body if it exists
       let responseBody = null;
       if (error?.response?.data) {
@@ -178,7 +178,7 @@ export class KYCContract {
       } else if (error?.data) {
         responseBody = typeof error.data === 'string' ? error.data : safeExtract(error.data);
       }
-      
+
       // Extract error details from response body for user-friendly messages
       let userFriendlyMessage = errorMessage;
       if (responseBody && typeof responseBody === 'object') {
@@ -192,11 +192,11 @@ export class KYCContract {
           userFriendlyMessage = responseBody.error;
         }
       }
-      
+
       // Log the full error for debugging (using safe extraction)
       const safeErrorDetails = safeExtract(errorDetails);
       console.error('Transaction broadcast error:', safeErrorDetails);
-      
+
       // Provide detailed error message
       const detailedMessage = userFriendlyMessage || (typeof responseBody === 'string' ? responseBody : (errorDetails.response || errorDetails.reason || errorDetails.apiError || errorDetails.data || errorMessage));
       throw new Error(detailedMessage);
@@ -222,7 +222,7 @@ export class KYCContract {
       });
 
       const jsonResult = cvToJSON(result);
-      
+
       // Result is (ok bool), cvToJSON returns:
       // { type: '(response bool UnknownType)', value: { type: 'bool', value: true }, success: true }
       // Check success field or response type, then extract boolean from value.value
@@ -262,7 +262,7 @@ export class KYCContract {
       });
 
       const jsonResult = cvToJSON(result);
-      
+
       // Result is (ok (buff 32))
       if (jsonResult.success === true || (jsonResult.type && jsonResult.type.includes('response'))) {
         const rootValue = jsonResult.value?.value;
@@ -293,7 +293,7 @@ export class KYCContract {
       // Query attester service for revocation status
       const url = `${this.config.attesterServiceUrl}/revocation/check?commitment=${encodeURIComponent(commitment)}`;
       const response = await fetch(url);
-      
+
       if (!response.ok) {
         // If service unavailable, assume not revoked (fail open)
         console.warn('Revocation check service unavailable, assuming not revoked');
@@ -352,7 +352,7 @@ export class KYCContract {
       });
 
       const jsonResult = cvToJSON(result);
-      
+
       // Result is (ok (some kyc-record)) or (ok none)
       // cvToJSON returns structure: { success: true, type: "...", value: { type: "(optional ...)", value: { type: "(tuple ...)", value: { ... } } } }
       if (jsonResult.success === true && jsonResult.value?.value?.value) {
@@ -363,7 +363,7 @@ export class KYCContract {
           attesterId: record['attester-id']?.value,
           registeredAt: record['registered-at']?.value,
         };
-        
+
         // Add history fields if present
         if (record['previous-commitment']?.value) {
           result.previousCommitment = record['previous-commitment'].value;
@@ -371,7 +371,7 @@ export class KYCContract {
         if (record['previous-registered-at']?.value !== undefined) {
           result.previousRegisteredAt = record['previous-registered-at'].value;
         }
-        
+
         return result;
       } else {
         return null;
@@ -380,6 +380,39 @@ export class KYCContract {
       console.error('Error getting KYC details:', error);
       return null;
     }
+  }
+
+  /**
+   * Wait for a transaction to be confirmed on-chain
+   * @param txId Transaction ID
+   * @param interval Polling interval in ms (default 10000)
+   * @param timeout Max timeout in ms (default 600000 - 10 minutes)
+   */
+  async waitForConfirmation(txId: string, interval = 10000, timeout = 600000): Promise<any> {
+    const startTime = Date.now();
+    const cleanTxId = txId.startsWith('0x') ? txId : `0x${txId}`;
+
+    while (Date.now() - startTime < timeout) {
+      try {
+        const response = await fetch(`${this.network.coreApiUrl}/extended/v1/tx/${cleanTxId}`);
+        if (response.ok) {
+          const txData = await response.json() as any;
+          if (txData.tx_status === 'success') {
+            return txData;
+          }
+          if (txData.tx_status === 'abort_by_response' || txData.tx_status === 'abort_by_post_condition') {
+            throw new Error(`Transaction aborted: ${txData.error || 'Unknown error'}`);
+          }
+        }
+      } catch (error: any) {
+        if (error.message && error.message.includes('Transaction aborted')) {
+          throw error;
+        }
+        // If 404 or network error, just continue polling
+      }
+      await new Promise(resolve => setTimeout(resolve, interval));
+    }
+    throw new Error('Transaction confirmation timed out');
   }
 
   /**

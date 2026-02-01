@@ -20,12 +20,12 @@ export interface ContractAddresses {
  */
 export const TESTNET_CONTRACTS: ContractAddresses = {
   network: 'testnet',
-  deployer: 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS',
+  deployer: 'ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J',
   contracts: {
-    'attester-registry': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Attester-registry',
-    'attester-registry-trait': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.attester-registry-trait',
-    'kyc-registry': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.KYc-registry',
-    'revocation': 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.revocation',
+    'attester-registry': 'ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J.attester-registry',
+    'attester-registry-trait': 'ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J.attester-registry-trait',
+    'kyc-registry': 'ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J.kyc-registry',
+    'revocation': 'ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J.revocation',
   },
   deployment_date: '2025-01-17',
   description: 'Deployed contract addresses for Noah-v2 KYC Registry system on Stacks Testnet',
@@ -33,22 +33,17 @@ export const TESTNET_CONTRACTS: ContractAddresses = {
 
 /**
  * Load contract addresses from JSON file or use defaults
- * In browser environments, this can load from a static JSON file
- * In Node.js, can use fs to read the JSON file
  */
-export function loadContractAddresses(network: 'testnet' | 'mainnet' | 'devnet' = 'testnet'): ContractAddresses {
-  // For now, return hardcoded testnet addresses
-  // In production, you might want to:
-  // 1. Load from a JSON file
-  // 2. Fetch from a registry/API
-  // 3. Use environment variables
-  
-  if (network === 'testnet') {
+export function loadContractAddresses(networkOrConfig: 'testnet' | 'mainnet' | 'devnet' | ContractAddresses = 'testnet'): ContractAddresses {
+  if (typeof networkOrConfig === 'object') {
+    return networkOrConfig;
+  }
+
+  if (networkOrConfig === 'testnet') {
     return TESTNET_CONTRACTS;
   }
-  
-  // TODO: Add mainnet addresses when deployed
-  throw new Error(`Contract addresses for ${network} not yet configured`);
+
+  throw new Error(`Contract addresses for ${networkOrConfig} not yet configured`);
 }
 
 /**

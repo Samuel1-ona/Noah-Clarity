@@ -40,32 +40,42 @@ async function checkServiceHealth(url: string, serviceName: string): Promise<boo
  */
 async function testProofGeneration(sdk: NoahSDK): Promise<boolean> {
   console.log('\n Testing proof generation...');
-  
+
   try {
-    // Create a test proof request
-    // Note: Backend expects numeric values for big.Int fields (not strings)
-    // Go's big.Int JSON unmarshaling requires numbers, not strings
+    // Create a test proof request with the new EdDSA fields
     const proofRequest: any = {
-      age: 25,
-      jurisdiction: 1, // US
-      is_accredited: 1,
-      identity_data: 123456789, // Numeric value for testing
-      nonce: 12345,
-      min_age: 18,
-      allowed_jurisdictions: [1, 2, 3], // US, EU, etc. - as numbers
-      require_accreditation: 1,
-      commitment: parseInt('a'.repeat(16), 16), // Convert hex to number (using first 16 chars for testing)
+      age: "25",
+      jurisdiction: "1",
+      is_accredited: "1",
+      identity_data: "123456789",
+      nonce: "12345",
+      min_age: "18",
+      allowed_jurisdictions: ["1", "2", "3"],
+      require_accreditation: "1",
+      commitment: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      user_address: "ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J",
+      signature: {
+        r: { x: "0", y: "0" },
+        s: "0"
+      },
+      attester_pub_key: {
+        a: { x: "0", y: "0" }
+      }
     };
 
-    const response = await sdk.proof.generateProof(proofRequest);
-    
-    if (response.success) {
+    const jobResponse = await sdk.proof.generateProof(proofRequest);
+    console.log(' Job submitted:', jobResponse.job_id);
+
+    // Wait for proof generation
+    const proofResult = await sdk.proof.waitForProof(jobResponse.job_id);
+
+    if (proofResult) {
       console.log(' Proof generation successful');
-      console.log('   Commitment:', response.commitment);
-      console.log('   Public inputs:', response.public_inputs?.length || 0, 'inputs');
+      console.log('   Commitment:', proofResult.commitment);
+      console.log('   Public inputs:', proofResult.public_inputs?.length || 0, 'inputs');
       return true;
     } else {
-      console.error(' Proof generation failed:', response.error);
+      console.error(' Proof generation failed');
       return false;
     }
   } catch (error) {
@@ -79,7 +89,7 @@ async function testProofGeneration(sdk: NoahSDK): Promise<boolean> {
  */
 async function testAttestation(sdk: NoahSDK, commitment: string, publicInputs: string[], proof: string): Promise<boolean> {
   console.log('  Testing attestation...');
-  
+
   try {
     const attestationRequest = {
       commitment,
@@ -89,7 +99,7 @@ async function testAttestation(sdk: NoahSDK, commitment: string, publicInputs: s
     };
 
     const response = await sdk.proof.requestAttestation(attestationRequest);
-    
+
     if (response.success) {
       console.log(' Attestation successful');
       console.log('   Attester ID:', response.attester_id);
@@ -110,20 +120,20 @@ async function testAttestation(sdk: NoahSDK, commitment: string, publicInputs: s
  */
 async function testContractReadOnly(sdk: NoahSDK, testAddress: string): Promise<boolean> {
   console.log('\n📖 Testing contract read-only functions...');
-  
+
   try {
     // Test hasKYC (should return false for test address)
     const hasKYC = await sdk.contract.hasKYC(testAddress);
     console.log(' hasKYC check successful:', hasKYC.hasKYC);
-    
+
     // Test isKYCValid
     const isValid = await sdk.contract.isKYCValid(testAddress);
     console.log(' isKYCValid check successful:', isValid);
-    
+
     // Test getKYC
     const kycDetails = await sdk.contract.getKYC(testAddress);
     console.log(' getKYC check successful:', kycDetails ? 'Found' : 'Not found');
-    
+
     return true;
   } catch (error) {
     console.error(' Contract read-only error:', error instanceof Error ? error.message : String(error));
@@ -136,7 +146,7 @@ async function testContractReadOnly(sdk: NoahSDK, testAddress: string): Promise<
  */
 async function runTests() {
   console.log(' Starting Noah-v2 SDK Local Integration Tests\n');
-  console.log('=' .repeat(50));
+  console.log('='.repeat(50));
 
   // Step 1: Check backend services
   console.log(' Checking backend services...');

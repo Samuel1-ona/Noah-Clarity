@@ -2,11 +2,34 @@
  * Type definitions for Noah-v2 SDK
  */
 
+export interface DocumentInfo {
+  document_type: string;
+  document_number: string;
+  country: string;
+  issue_date?: string;
+  expiry_date?: string;
+}
+
+export interface Point {
+  x: string;
+  y: string;
+}
+
+export interface EdDSASignature {
+  r: Point;
+  s: string;
+}
+
+export interface EdDSAPublicKey {
+  a: Point;
+}
+
 export interface KYCStatus {
   hasKYC: boolean;
   commitment?: string;
   attesterId?: number;
   registeredAt?: number;
+  expiry?: number;
   previousCommitment?: string;
   previousRegisteredAt?: number;
 }
@@ -15,6 +38,27 @@ export interface RegisterKYCParams {
   commitment: string;
   signature: string;
   attesterId: number;
+}
+
+export interface CredentialRequest {
+  user_id: string;
+  user_address: string;
+  identity_data?: string;
+  nonce?: string;
+  user_commitment?: string;
+  attributes: Record<string, any>;
+  documents: DocumentInfo[];
+}
+
+export interface CredentialResponse {
+  success: boolean;
+  credential?: any; // The full signed credential object
+  error?: string;
+}
+
+export interface AttesterInfo {
+  attester_id: number;
+  public_key: string; // ECDSA Public Key (hex)
 }
 
 export interface ProofRequest {
@@ -27,13 +71,28 @@ export interface ProofRequest {
   allowed_jurisdictions: string[];
   require_accreditation: string;
   commitment: string;
+  signature: EdDSASignature;
+  attester_pub_key: EdDSAPublicKey;
+  user_address: string;
 }
 
 export interface ProofResponse {
+  job_id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  success: boolean;
+  error?: string;
+}
+
+export interface ProofResult {
   proof: string;
   public_inputs: string[];
   commitment: string;
-  success: boolean;
+}
+
+export interface JobStatusResponse {
+  job_id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  result?: ProofResult;
   error?: string;
 }
 
@@ -46,8 +105,11 @@ export interface AttestationRequest {
 
 export interface AttestationResponse {
   commitment: string;
-  signature: string;
+  signature: string; // ECDSA (Standard Stacks signature)
+  eddsa_signature: EdDSASignature; // EdDSA (BN254 Baby-Jubjub)
+  attester_public_key: EdDSAPublicKey;
   attester_id: number;
+  expiry: number; // Expiration timestamp
   success: boolean;
   error?: string;
 }

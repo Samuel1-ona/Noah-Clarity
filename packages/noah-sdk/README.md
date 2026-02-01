@@ -17,8 +17,8 @@ import { NoahSDK } from 'noah-clarity';
 
 const sdk = new NoahSDK(
   {
-    kycRegistryAddress: 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.kyc-registry',
-    attesterRegistryAddress: 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.attester-registry',
+    kycRegistryAddress: 'ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J.kyc-registry',
+    attesterRegistryAddress: 'ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J.attester-registry',
     network: 'testnet',
   },
   {
@@ -27,22 +27,21 @@ const sdk = new NoahSDK(
 );
 ```
 
-### Check KYC Status
+### Async Proof Generation
 
 ```typescript
-const hasKYC = await sdk.contract.hasKYC(userAddress);
-if (hasKYC.hasKYC) {
-  // User has KYC
-}
-```
+// 1. Submit proof job
+const job = await sdk.proof.generateProof(proofRequest);
 
-### Require KYC for Protocol Access
+// 2. Wait for completion
+const proofResult = await sdk.proof.waitForProof(job.job_id);
 
-```typescript
-const isValid = await sdk.contract.isKYCValid(userAddress);
-if (!isValid) {
-  throw new Error('KYC required');
-}
+// 3. Get attestation
+const attestation = await sdk.proof.requestAttestation({
+  commitment: proofResult.commitment,
+  public_inputs: proofResult.public_inputs,
+  proof: proofResult.proof
+});
 ```
 
 Examples and integration patterns will be available when the SDK is fully implemented.
