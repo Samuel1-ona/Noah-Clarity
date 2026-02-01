@@ -86,6 +86,22 @@ type ProofResponse struct {
 	Error        string   `json:"error,omitempty"`
 }
 
+// JobResponse represents the response when a proof generation job is submitted
+type JobResponse struct {
+	JobID   string `json:"job_id"`
+	Status  string `json:"status"` // "pending", "processing", "completed", "failed"
+	Success bool   `json:"success"`
+}
+
+// JobStatusResponse represents the current status of a proof generation job
+type JobStatusResponse struct {
+	JobID    string         `json:"job_id"`
+	Status   string         `json:"status"`
+	Result   *ProofResponse `json:"result,omitempty"`
+	Error    string         `json:"error,omitempty"`
+	IssuedAt int64          `json:"issued_at"`
+}
+
 // CircuitConfig holds circuit configuration
 type CircuitConfig struct {
 	MaxJurisdictions int `json:"max_jurisdictions"`
