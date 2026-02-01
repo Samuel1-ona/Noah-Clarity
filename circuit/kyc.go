@@ -1,9 +1,12 @@
 package circuit
 
 import (
+	tedwards "github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/accumulator/merkle"
+	"github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/consensys/gnark/std/hash/mimc"
+	"github.com/consensys/gnark/std/signature/eddsa"
 )
 
 // KYCCircuit is the main circuit that combines all KYC checks
@@ -23,12 +26,18 @@ type KYCCircuit struct {
 	MerklePath   []frontend.Variable `gnark:",secret"`
 	MerkleHelper []frontend.Variable `gnark:",secret"`
 
+	// EdDSA Signature (Private)
+	Signature eddsa.Signature `gnark:",secret"`
+
 	// Public inputs
 	MinAge               frontend.Variable `gnark:",public"`
 	JurisdictionRoot     frontend.Variable `gnark:",public"` // Root of allowed jurisdictions tree
 	RequireAccreditation frontend.Variable `gnark:",public"` // 1 if accreditation required, 0 otherwise
 	UserAddress          frontend.Variable `gnark:",public"` // The user's blockchain address
 	Commitment           frontend.Variable `gnark:",public"`
+
+	// Attester Identity (Public)
+	AttesterPublicKey eddsa.PublicKey `gnark:",public"`
 }
 
 // Define declares the circuit constraints
@@ -100,5 +109,14 @@ func (circuit *KYCCircuit) Define(api frontend.API) error {
 
 	api.AssertIsEqual(circuit.Commitment, computedCommitment)
 
-	return nil
+	// 5. Attester Signature Verification
+	// Verifies that the Commitment was signed by a trusted Attester
+	curve, err := twistededwards.NewEdCurve(api, tedwards.BN254)
+	if err != nil {
+		return err
+	}
+
+	// eddsa.Verify expects the message to be a hash or a value.
+	// We use the computedCommitment as the message.
+	return eddsa.Verify(curve, circuit.Signature, computedCommitment, circuit.AttesterPublicKey, &mimcHash)
 }

@@ -1,0 +1,99 @@
+basePath: /
+definitions:
+  main.JobResponse:
+    properties:
+      job_id:
+        type: string
+      status:
+        description: '"pending", "processing", "completed", "failed"'
+        type: string
+      success:
+        type: boolean
+    type: object
+  main.JobStatusResponse:
+    properties:
+      error:
+        type: string
+      issued_at:
+        type: integer
+      job_id:
+        type: string
+      result:
+        $ref: '#/definitions/main.ProofResponse'
+      status:
+        type: string
+    type: object
+  main.ProofRequest:
+    type: object
+  main.ProofResponse:
+    properties:
+      commitment:
+        description: Commitment hash
+        type: string
+      error:
+        type: string
+      proof:
+        description: Serialized proof
+        type: string
+      public_inputs:
+        description: Public inputs as hex strings
+        items:
+          type: string
+        type: array
+      success:
+        type: boolean
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Prover service for Noah ZK Identity system. Handles asynchronous ZK
+    proof generation.
+  title: Noah Prover API
+  version: "1.0"
+paths:
+  /proof/generate:
+    post:
+      consumes:
+      - application/json
+      description: Submits a proof generation request to the background worker and
+        returns a job ID.
+      parameters:
+      - description: Proof Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.ProofRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/main.JobResponse'
+      summary: Generate a ZK proof asynchronously
+      tags:
+      - proof
+  /proof/status/{id}:
+    get:
+      consumes:
+      - application/json
+      description: returns the current status and result (if completed) of a proof
+        generation job.
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.JobStatusResponse'
+      summary: Get proof generation job status
+      tags:
+      - proof
+swagger: "2.0"

@@ -1,0 +1,31 @@
+services:
+  attester:
+    build:
+      context: .
+      dockerfile: backend/attester/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - DB_PATH=/app/data/attester.db
+      - VERIFYING_KEY_PATH=/app/keys/kyc_verifying.key
+      - ATTESTER_ID=1
+    volumes:
+      - attester-data:/app/data
+      - ./backend/prover/keys:/app/keys:ro # Share same keys for now
+
+  prover:
+    build:
+      context: .
+      dockerfile: backend/prover/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - PROVING_KEY_PATH=/app/keys/proving.key
+      - VERIFYING_KEY_PATH=/app/keys/verifying.key
+    volumes:
+      - ./backend/prover/keys:/app/keys
+
+volumes:
+  attester-data:

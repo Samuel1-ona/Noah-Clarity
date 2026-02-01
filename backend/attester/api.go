@@ -33,6 +33,14 @@ func NewAPI(signer *Signer) *API {
 }
 
 // IssueCredential handles credential issuance requests
+// @Summary Issue a new ZK credential
+// @Description Extracts identity data, verifies documents, and issues a MiMC commitment signed with EdDSA and ECDSA.
+// @Tags credential
+// @Accept json
+// @Produce json
+// @Param request body CredentialRequest true "Credential Request"
+// @Success 200 {object} Credential
+// @Router /credential/issue [post]
 func (api *API) IssueCredential(c *gin.Context) {
 	var req CredentialRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -59,6 +67,14 @@ func (api *API) IssueCredential(c *gin.Context) {
 }
 
 // VerifyPassport handles passport image upload and OCR extraction
+// @Summary Extract info from passport image
+// @Description Uses OCR to extract document number, type, and country from an uploaded passport image.
+// @Tags identity
+// @Accept multipart/form-data
+// @Produce json
+// @Param passport formData file true "Passport image file"
+// @Success 200 {object} DocumentInfo
+// @Router /passport/verify [post]
 func (api *API) VerifyPassport(c *gin.Context) {
 	file, err := c.FormFile("passport")
 	if err != nil {
@@ -88,6 +104,14 @@ func (api *API) VerifyPassport(c *gin.Context) {
 }
 
 // CreateAttestation handles attestation signature requests
+// @Summary Create an attestation for a ZK proof
+// @Description Verifies a Groth16 proof and returns an attestation signature if valid.
+// @Tags attestation
+// @Accept json
+// @Produce json
+// @Param request body AttestationRequest true "Attestation Request"
+// @Success 200 {object} AttestationResponse
+// @Router /credential/attest [post]
 func (api *API) CreateAttestation(c *gin.Context) {
 	var req AttestationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

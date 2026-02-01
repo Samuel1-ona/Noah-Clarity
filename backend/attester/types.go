@@ -1,5 +1,22 @@
 package main
 
+// Point represents a point on a twisted Edwards curve
+type Point struct {
+	X string `json:"x"`
+	Y string `json:"y"`
+}
+
+// EdDSASignature represents an EdDSA signature for ZK circuits
+type EdDSASignature struct {
+	R Point  `json:"r"`
+	S string `json:"s"`
+}
+
+// EdDSAPublicKey represents an EdDSA public key for ZK circuits
+type EdDSAPublicKey struct {
+	A Point `json:"a"`
+}
+
 // CredentialRequest represents a request to issue a credential
 type CredentialRequest struct {
 	UserID       string                 `json:"user_id"`
@@ -19,12 +36,15 @@ type DocumentInfo struct {
 
 // Credential represents an issued credential
 type Credential struct {
-	UserID     string                 `json:"user_id"`
-	Attributes map[string]interface{} `json:"attributes"`
-	Commitment string                 `json:"commitment"`
-	IssuedAt   int64                  `json:"issued_at"`
-	ExpiresAt  int64                  `json:"expires_at"`
-	AttesterID uint                   `json:"attester_id"`
+	UserID            string                 `json:"user_id"`
+	Attributes        map[string]interface{} `json:"attributes"`
+	Commitment        string                 `json:"commitment"`
+	Signature         string                 `json:"signature"` // ECDSA signature (hex)
+	EdDSASignature    EdDSASignature         `json:"eddsa_signature"`
+	AttesterPublicKey EdDSAPublicKey         `json:"attester_public_key"`
+	IssuedAt          int64                  `json:"issued_at"`
+	ExpiresAt         int64                  `json:"expires_at"`
+	AttesterID        uint                   `json:"attester_id"`
 }
 
 // AttestationRequest represents a request to sign a commitment
@@ -37,12 +57,14 @@ type AttestationRequest struct {
 
 // AttestationResponse contains the signed attestation
 type AttestationResponse struct {
-	Commitment string `json:"commitment"`
-	Signature  string `json:"signature"` // 64-byte signature (r || s) for Clarity compatibility
-	AttesterID uint   `json:"attester_id"`
-	Expiry     uint64 `json:"expiry"`
-	Success    bool   `json:"success"`
-	Error      string `json:"error,omitempty"`
+	Commitment        string         `json:"commitment"`
+	Signature         string         `json:"signature"` // ECDSA signature (hex)
+	EdDSASignature    EdDSASignature `json:"eddsa_signature"`
+	AttesterPublicKey EdDSAPublicKey `json:"attester_public_key"`
+	AttesterID        uint           `json:"attester_id"`
+	Expiry            uint64         `json:"expiry"`
+	Success           bool           `json:"success"`
+	Error             string         `json:"error,omitempty"`
 }
 
 // RevocationRequest represents a request to revoke a credential

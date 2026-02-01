@@ -1,0 +1,187 @@
+basePath: /
+definitions:
+  main.AttestationRequest:
+    properties:
+      commitment:
+        type: string
+      proof:
+        description: Serialized proof
+        type: string
+      public_inputs:
+        items:
+          type: string
+        type: array
+      user_id:
+        type: string
+    type: object
+  main.AttestationResponse:
+    properties:
+      attester_id:
+        type: integer
+      attester_public_key:
+        $ref: '#/definitions/main.EdDSAPublicKey'
+      commitment:
+        type: string
+      eddsa_signature:
+        $ref: '#/definitions/main.EdDSASignature'
+      error:
+        type: string
+      expiry:
+        type: integer
+      signature:
+        description: ECDSA signature (hex)
+        type: string
+      success:
+        type: boolean
+    type: object
+  main.Credential:
+    properties:
+      attester_id:
+        type: integer
+      attester_public_key:
+        $ref: '#/definitions/main.EdDSAPublicKey'
+      attributes:
+        additionalProperties: true
+        type: object
+      commitment:
+        type: string
+      eddsa_signature:
+        $ref: '#/definitions/main.EdDSASignature'
+      expires_at:
+        type: integer
+      issued_at:
+        type: integer
+      signature:
+        description: ECDSA signature (hex)
+        type: string
+      user_id:
+        type: string
+    type: object
+  main.CredentialRequest:
+    properties:
+      attributes:
+        additionalProperties: true
+        type: object
+      documents:
+        description: Document info extracted via OCR
+        items:
+          $ref: '#/definitions/main.DocumentInfo'
+        type: array
+      identity_data:
+        description: Private data to be hidden in ZK
+        type: string
+      nonce:
+        description: Random salt
+        type: string
+      user_address:
+        type: string
+      user_id:
+        type: string
+    type: object
+  main.DocumentInfo:
+    properties:
+      country:
+        description: ISO Country code
+        type: string
+      number:
+        description: Unique ID number
+        type: string
+      type:
+        description: '"Passport", "NationalID", etc.'
+        type: string
+    type: object
+  main.EdDSAPublicKey:
+    properties:
+      a:
+        $ref: '#/definitions/main.Point'
+    type: object
+  main.EdDSASignature:
+    properties:
+      r:
+        $ref: '#/definitions/main.Point'
+      s:
+        type: string
+    type: object
+  main.Point:
+    properties:
+      x:
+        type: string
+      "y":
+        type: string
+    type: object
+host: localhost:8081
+info:
+  contact: {}
+  description: Attester service for Noah ZK Identity system.
+  title: Noah Attester API
+  version: "1.0"
+paths:
+  /credential/attest:
+    post:
+      consumes:
+      - application/json
+      description: Verifies a Groth16 proof and returns an attestation signature if
+        valid.
+      parameters:
+      - description: Attestation Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.AttestationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.AttestationResponse'
+      summary: Create an attestation for a ZK proof
+      tags:
+      - attestation
+  /credential/issue:
+    post:
+      consumes:
+      - application/json
+      description: Extracts identity data, verifies documents, and issues a MiMC commitment
+        signed with EdDSA and ECDSA.
+      parameters:
+      - description: Credential Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.CredentialRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.Credential'
+      summary: Issue a new ZK credential
+      tags:
+      - credential
+  /passport/verify:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Uses OCR to extract document number, type, and country from an
+        uploaded passport image.
+      parameters:
+      - description: Passport image file
+        in: formData
+        name: passport
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.DocumentInfo'
+      summary: Extract info from passport image
+      tags:
+      - identity
+swagger: "2.0"

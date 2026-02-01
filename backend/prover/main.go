@@ -1,5 +1,11 @@
 package main
 
+// @title Noah Prover API
+// @version 1.0
+// @description Prover service for Noah ZK Identity system. Handles asynchronous ZK proof generation.
+// @host localhost:8080
+// @BasePath /
+
 import (
 	"fmt"
 	"os"
@@ -12,6 +18,11 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
+	_ "noah-v2/backend/prover/docs"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func main() {
@@ -87,6 +98,9 @@ func main() {
 	router.GET("/health", health.Handler(healthConfig))
 	router.GET("/health/ready", health.ReadinessHandler())
 	router.GET("/health/live", health.LivenessHandler())
+
+	// Swagger documentation
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Proof generation
 	router.POST("/proof/generate", api.GenerateProof)

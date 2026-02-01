@@ -67,11 +67,46 @@ func (is *IssuerService) IssueCredential(req *CredentialRequest) (*Credential, e
 		return nil, fmt.Errorf("failed to generate commitment: %w", err)
 	}
 
+	// 3.5 Sign the commitment
+	commitmentBytes, _ := hex.DecodeString(strings.TrimPrefix(commitment, "0x"))
+
+	// ECDSA for Clarity
+	ecdsaSig, err := is.signer.SignCommitment(hex.EncodeToString(commitmentBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign ECDSA: %w", err)
+	}
+
+	// EdDSA for ZK
+	eddsaSig, err := is.signer.SignEdDSA(commitmentBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign EdDSA: %w", err)
+	}
+
+	eddsaPub := is.signer.GetEdDSAPublicKey()
+
+	// Convert EdDSA types to JSON-friendly format
+	var sBig big.Int
+	sBig.SetBytes(eddsaSig.S[:])
+
 	// Create credential
 	credential := &Credential{
 		UserID:     req.UserID,
 		Attributes: req.Attributes,
 		Commitment: commitment,
+		Signature:  ecdsaSig,
+		EdDSASignature: EdDSASignature{
+			R: Point{
+				X: eddsaSig.R.X.String(),
+				Y: eddsaSig.R.Y.String(),
+			},
+			S: sBig.String(),
+		},
+		AttesterPublicKey: EdDSAPublicKey{
+			A: Point{
+				X: eddsaPub.A.X.String(),
+				Y: eddsaPub.A.Y.String(),
+			},
+		},
 		IssuedAt:   time.Now().Unix(),
 		ExpiresAt:  time.Now().Add(365 * 24 * time.Hour).Unix(),
 		AttesterID: is.signer.GetAttesterID(),

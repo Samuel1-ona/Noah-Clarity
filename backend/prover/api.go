@@ -27,6 +27,14 @@ func (api *API) Initialize() error {
 }
 
 // GenerateProof handles proof generation requests (Async)
+// @Summary Generate a ZK proof asynchronously
+// @Description Submits a proof generation request to the background worker and returns a job ID.
+// @Tags proof
+// @Accept json
+// @Produce json
+// @Param request body ProofRequest true "Proof Request"
+// @Success 202 {object} JobResponse
+// @Router /proof/generate [post]
 func (api *API) GenerateProof(c *gin.Context) {
 	var req ProofRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -53,6 +61,14 @@ func (api *API) GenerateProof(c *gin.Context) {
 }
 
 // GetJobStatus returns the status of a proof generation job
+// @Summary Get proof generation job status
+// @Description returns the current status and result (if completed) of a proof generation job.
+// @Tags proof
+// @Accept json
+// @Produce json
+// @Param id path string true "Job ID"
+// @Success 200 {object} JobStatusResponse
+// @Router /proof/status/{id} [get]
 func (api *API) GetJobStatus(c *gin.Context) {
 	jobID := c.Param("id")
 	status, ok := api.worker.GetStatus(jobID)

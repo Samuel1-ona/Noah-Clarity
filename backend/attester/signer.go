@@ -6,17 +6,21 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
-	"os"
+	
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
+
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
+	"github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 )
 
 // Signer handles ECDSA signature generation using secp256k1
 type Signer struct {
-	privateKey *ecdsa.PrivateKey
-	publicKey  *ecdsa.PublicKey
-	attesterID uint
+	privateKey      *ecdsa.PrivateKey
+	publicKey       *ecdsa.PublicKey
+	eddsaPrivateKey *eddsa.PrivateKey
+	attesterID      uint
 }
 
 // NewSigner creates a new signer from a private key
@@ -28,10 +32,18 @@ func NewSigner(privateKeyHex string, attesterID uint) (*Signer, error) {
 
 	publicKey := &privateKey.PublicKey
 
+	// Initialize EdDSA key for BN254 (Baby-Jubjub)
+	// For production, this should be loaded from a separate EdDSA key file or derived from a seed.
+	eddsaPriv, err := eddsa.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate EdDSA key: %w", err)
+	}
+
 	return &Signer{
-		privateKey: privateKey,
-		publicKey:  publicKey,
-		attesterID: attesterID,
+		privateKey:      privateKey,
+		publicKey:       publicKey,
+		eddsaPrivateKey: eddsaPriv,
+		attesterID:      attesterID,
 	}, nil
 }
 
@@ -69,46 +81,60 @@ func (s *Signer) Sign(message []byte) (string, error) {
 	return hex.EncodeToString(signature), nil
 }
 
+// SignEdDSA signs a commitment hash using EdDSA (Baby-Jubjub) for ZK-friendly verification
+// The commitment should be a 32-byte hash (MiMC)
+func (s *Signer) SignEdDSA(commitment []byte) (eddsa.Signature, error) {
+	// Sign requires a hash function for Fiat-Shamir
+	hFunc := mimc.NewMiMC()
+
+	signatureBytes, err := s.eddsaPrivateKey.Sign(commitment, hFunc)
+	if err != nil {
+		return eddsa.Signature{}, fmt.Errorf("EdDSA signing failed: %w", err)
+	}
+
+	var sig eddsa.Signature
+	_, err = sig.SetBytes(signatureBytes)
+	if err != nil {
+		return eddsa.Signature{}, fmt.Errorf("failed to parse EdDSA signature: %w", err)
+	}
+
+	return sig, nil
+}
+
+// GetEdDSAPublicKey returns the EdDSA public key for circuit verification
+func (s *Signer) GetEdDSAPublicKey() eddsa.PublicKey {
+	return s.eddsaPrivateKey.PublicKey
+}
+
 // SignWithSHA256 signs a message hash using SHA256 (for Clarity secp256k1-verify compatibility)
 // Clarity's secp256k1-verify expects the signature over the message-hash (SHA256 of original message)
 // Since the commitment is already a 32-byte hash, we sign it directly (ECDSA hashes internally)
 func (s *Signer) SignWithSHA256(messageHash []byte) (string, error) {
-	// #region agent log
-	logFile, _ := os.OpenFile("/Users/machine/Documents/Noah-v2/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	logEntry1 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"signer.go:75","message":"SignWithSHA256 entry","data":{"messageHashLen":%d,"messageHashHex":"%s"},"timestamp":%d}`+"\n", len(messageHash), hex.EncodeToString(messageHash), 0)
-	logFile.WriteString(logEntry1)
-	// #endregion agent log
-	
-	// Use crypto.Sign from go-ethereum (similar to Ethereum Sign function)
-	// crypto.Sign returns 65 bytes: r || s || v, but we need 64 bytes for Clarity
-	// crypto.Sign signs the hash directly (doesn't hash again)
-	// #region agent log
-	logEntry2 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"signer.go:87","message":"Using crypto.Sign","data":{"commitmentLen":%d,"commitmentHex":"%s"},"timestamp":%d}`+"\n", len(messageHash), hex.EncodeToString(messageHash), 0)
-	logFile.WriteString(logEntry2)
-	// #endregion agent log
+
+
+
 
 	// Use crypto.Sign (returns 65 bytes: r || s || v)
 	signature, err := crypto.Sign(messageHash, s.privateKey)
 	if err != nil {
-		logFile.Close()
 		return "", fmt.Errorf("signing failed: %w", err)
 	}
 
 	// Extract r and s (first 64 bytes, discard recovery ID v)
 	sigBytes := signature[:64]
-	
+
 	// Extract r and s components for low-S normalization
 	rBytes := sigBytes[:32]
 	sBytes := sigBytes[32:64]
-	
+
 	// Get curve order for secp256k1
 	curve := secp256k1.S256()
 	curveOrder := curve.N
 	halfOrder := new(big.Int).Div(curveOrder, big.NewInt(2))
-	
+
 	// Parse s value
 	sValue := new(big.Int).SetBytes(sBytes)
-	
+
 	// Normalize to low-S: if s > curveOrder/2, use curveOrder - s
 	var normalizedSBytes []byte
 	if sValue.Cmp(halfOrder) > 0 {
@@ -120,24 +146,17 @@ func (s *Signer) SignWithSHA256(messageHash []byte) (string, error) {
 		// Already low-S
 		normalizedSBytes = sBytes
 	}
-	
+
 	// Reconstruct signature with normalized s
 	normalizedSig := append(rBytes, normalizedSBytes...)
-	
-	// #region agent log
-	logEntry3 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"signer.go:95","message":"Signature normalization","data":{"originalSLen":%d,"normalizedSLen":%d,"wasHighS":%t,"sHex":"%s","normalizedSHex":"%s"},"timestamp":%d}`+"\n", len(sBytes), len(normalizedSBytes), sValue.Cmp(halfOrder) > 0, hex.EncodeToString(sBytes), hex.EncodeToString(normalizedSBytes), 0)
-	logFile.WriteString(logEntry3)
-	// #endregion agent log
+
+
 
 	// Clarity accepts 64-byte signatures (r || s, no recovery ID) with low-S normalization
 	sigHex := hex.EncodeToString(normalizedSig)
-	
-	// #region agent log
-	logEntry4 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"signer.go:102","message":"Final signature","data":{"sigLen":%d,"sigHex":"%s"},"timestamp":%d}`+"\n", len(normalizedSig), sigHex, 0)
-	logFile.WriteString(logEntry4)
-	logFile.Close()
-	// #endregion agent log
-	
+
+
+
 	// Return 64-byte signature (Clarity accepts this format)
 	return sigHex, nil
 }
@@ -206,4 +225,3 @@ func VerifySignature(message []byte, signatureHex string, publicKeyHex string) (
 
 	return ecdsa.Verify(publicKey, hash.Bytes(), r, s), nil
 }
-

@@ -1,0 +1,277 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Attester service for Noah ZK Identity system.",
+        "title": "Noah Attester API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8081",
+    "basePath": "/",
+    "paths": {
+        "/credential/attest": {
+            "post": {
+                "description": "Verifies a Groth16 proof and returns an attestation signature if valid.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attestation"
+                ],
+                "summary": "Create an attestation for a ZK proof",
+                "parameters": [
+                    {
+                        "description": "Attestation Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.AttestationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.AttestationResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/credential/issue": {
+            "post": {
+                "description": "Extracts identity data, verifies documents, and issues a MiMC commitment signed with EdDSA and ECDSA.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "credential"
+                ],
+                "summary": "Issue a new ZK credential",
+                "parameters": [
+                    {
+                        "description": "Credential Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.CredentialRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.Credential"
+                        }
+                    }
+                }
+            }
+        },
+        "/passport/verify": {
+            "post": {
+                "description": "Uses OCR to extract document number, type, and country from an uploaded passport image.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "identity"
+                ],
+                "summary": "Extract info from passport image",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Passport image file",
+                        "name": "passport",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.DocumentInfo"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "main.AttestationRequest": {
+            "type": "object",
+            "properties": {
+                "commitment": {
+                    "type": "string"
+                },
+                "proof": {
+                    "description": "Serialized proof",
+                    "type": "string"
+                },
+                "public_inputs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.AttestationResponse": {
+            "type": "object",
+            "properties": {
+                "attester_id": {
+                    "type": "integer"
+                },
+                "attester_public_key": {
+                    "$ref": "#/definitions/main.EdDSAPublicKey"
+                },
+                "commitment": {
+                    "type": "string"
+                },
+                "eddsa_signature": {
+                    "$ref": "#/definitions/main.EdDSASignature"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "expiry": {
+                    "type": "integer"
+                },
+                "signature": {
+                    "description": "ECDSA signature (hex)",
+                    "type": "string"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "main.Credential": {
+            "type": "object",
+            "properties": {
+                "attester_id": {
+                    "type": "integer"
+                },
+                "attester_public_key": {
+                    "$ref": "#/definitions/main.EdDSAPublicKey"
+                },
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "commitment": {
+                    "type": "string"
+                },
+                "eddsa_signature": {
+                    "$ref": "#/definitions/main.EdDSASignature"
+                },
+                "expires_at": {
+                    "type": "integer"
+                },
+                "issued_at": {
+                    "type": "integer"
+                },
+                "signature": {
+                    "description": "ECDSA signature (hex)",
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.CredentialRequest": {
+            "type": "object",
+            "properties": {
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "documents": {
+                    "description": "Document info extracted via OCR",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/main.DocumentInfo"
+                    }
+                },
+                "identity_data": {
+                    "description": "Private data to be hidden in ZK",
+                    "type": "string"
+                },
+                "nonce": {
+                    "description": "Random salt",
+                    "type": "string"
+                },
+                "user_address": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.DocumentInfo": {
+            "type": "object",
+            "properties": {
+                "country": {
+                    "description": "ISO Country code",
+                    "type": "string"
+                },
+                "number": {
+                    "description": "Unique ID number",
+                    "type": "string"
+                },
+                "type": {
+                    "description": "\"Passport\", \"NationalID\", etc.",
+                    "type": "string"
+                }
+            }
+        },
+        "main.EdDSAPublicKey": {
+            "type": "object",
+            "properties": {
+                "a": {
+                    "$ref": "#/definitions/main.Point"
+                }
+            }
+        },
+        "main.EdDSASignature": {
+            "type": "object",
+            "properties": {
+                "r": {
+                    "$ref": "#/definitions/main.Point"
+                },
+                "s": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.Point": {
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "string"
+                },
+                "y": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

@@ -1,5 +1,11 @@
 package main
 
+// @title Noah Attester API
+// @version 1.0
+// @description Attester service for Noah ZK Identity system.
+// @host localhost:8081
+// @BasePath /
+
 import (
 	"encoding/hex"
 	"fmt"
@@ -16,6 +22,11 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
+	_ "noah-v2/backend/attester/docs"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 // discoverNextAvailableID queries the contract to find the next available attester ID
@@ -192,6 +203,9 @@ func main() {
 	router.GET("/health", health.Handler(healthConfig))
 	router.GET("/health/ready", health.ReadinessHandler())
 	router.GET("/health/live", health.LivenessHandler())
+
+	// Swagger documentation
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Attester info
 	router.GET("/info", api.GetAttesterInfo)

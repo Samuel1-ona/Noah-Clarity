@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-
 	"noah-v2/circuit"
+
+	"github.com/consensys/gnark/std/algebra/native/twistededwards"
+	"github.com/consensys/gnark/std/signature/eddsa"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
@@ -57,6 +59,21 @@ func (cm *CircuitManager) Initialize() error {
 		RequireAccreditation: 0,
 		UserAddress:          0,
 		Commitment:           0,
+		// EdDSA Signature (placeholder for compilation)
+		Signature: eddsa.Signature{
+			R: twistededwards.Point{
+				X: 0,
+				Y: 0,
+			},
+			S: 0,
+		},
+		// Attester Public Key (placeholder for compilation)
+		AttesterPublicKey: eddsa.PublicKey{
+			A: twistededwards.Point{
+				X: 0,
+				Y: 0,
+			},
+		},
 	}
 
 	// Get the scalar field for BN254 curve (used by Groth16)
@@ -165,6 +182,21 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 		RequireAccreditation: req.RequireAccreditation.Int,
 		UserAddress:          req.UserAddress.Int,
 		Commitment:           computedCommitment, // Use computed commitment
+		// EdDSA Signature (Private Witness)
+		Signature: eddsa.Signature{
+			R: twistededwards.Point{
+				X: req.Signature.R.X.Int,
+				Y: req.Signature.R.Y.Int,
+			},
+			S: req.Signature.S.Int,
+		},
+		// Attester Public Key (Public Input)
+		AttesterPublicKey: eddsa.PublicKey{
+			A: twistededwards.Point{
+				X: req.AttesterPubKey.X.Int,
+				Y: req.AttesterPubKey.Y.Int,
+			},
+		},
 	}
 
 	// Create full witness (with both private and public inputs)
@@ -218,8 +250,6 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 		return s
 	}
 
-
-
 	// Add MinAge
 	minAgeHex := padHex(req.MinAge.Int.Text(16))
 	publicInputs = append(publicInputs, minAgeHex)
@@ -240,7 +270,13 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 	commitmentHex := padHex(computedCommitment.Text(16))
 	publicInputs = append(publicInputs, commitmentHex)
 
-
+	// Add Attester Public Key (Public Input)
+	// Order must match circuit's public input ordering!
+	// In kyc.go: MinAge, JurisdictionRoot, RequireAccreditation, UserAddress, Commitment, AttesterPublicKey
+	attesterPubKeyAXHex := padHex(req.AttesterPubKey.X.Int.Text(16))
+	attesterPubKeyAYHex := padHex(req.AttesterPubKey.Y.Int.Text(16))
+	publicInputs = append(publicInputs, attesterPubKeyAXHex)
+	publicInputs = append(publicInputs, attesterPubKeyAYHex)
 
 	_ = publicWitness // Use publicWitness for verification later
 

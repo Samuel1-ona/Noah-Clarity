@@ -69,12 +69,27 @@ type ProofRequest struct {
 	MerklePath   []frontend.Variable `json:"merkle_path"`
 	MerkleHelper []frontend.Variable `json:"merkle_helper"`
 
+	// EdDSA Signature (Private Witness)
+	Signature struct {
+		R struct {
+			X BigIntString `json:"x"`
+			Y BigIntString `json:"y"`
+		} `json:"r"`
+		S BigIntString `json:"s"`
+	} `json:"signature"`
+
 	// Public inputs
 	MinAge               BigIntString `json:"min_age"`
 	JurisdictionRoot     BigIntString `json:"jurisdiction_root"`
 	RequireAccreditation BigIntString `json:"require_accreditation"`
 	UserAddress          BigIntString `json:"user_address"`
 	Commitment           BigIntString `json:"commitment"`
+
+	// Attester Public Key (Public Input)
+	AttesterPubKey struct {
+		X BigIntString `json:"x"`
+		Y BigIntString `json:"y"`
+	} `json:"attester_pub_key"`
 }
 
 // ProofResponse represents the generated proof and public inputs
