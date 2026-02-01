@@ -1,0 +1,32 @@
+=== RUN   TestKYCCircuit
+    circuit_test.go:157: 
+        	Error Trace:	/Users/machine/Documents/Noah-v2/circuit/circuit_test.go:157
+        	Error:      	Received unexpected error:
+        	            	can't set fr.Element from type expr.LinearExpression
+        	Test:       	TestKYCCircuit
+--- FAIL: TestKYCCircuit (0.39s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered]
+	panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x2 addr=0x50 pc=0x100c08838]
+
+goroutine 5 [running]:
+testing.tRunner.func1.2({0x100f8aee0, 0x1013a3f40})
+	/usr/local/go/src/testing/testing.go:1734 +0x1ac
+testing.tRunner.func1()
+	/usr/local/go/src/testing/testing.go:1737 +0x334
+panic({0x100f8aee0?, 0x1013a3f40?})
+	/usr/local/go/src/runtime/panic.go:792 +0x124
+github.com/consensys/gnark/constraint/bn254.(*system).Solve(0x1400015a908, {0x0, 0x0}, {0x0, 0x0, 0x0})
+	/Users/machine/go/pkg/mod/github.com/consensys/gnark@v0.9.1/constraint/bn254/system.go:68 +0x248
+github.com/consensys/gnark/backend/groth16/bn254.Prove(0x1400015a908, 0x140001b8408, {0x0, 0x0}, {0x0?, 0x4?, 0x100f73d80?})
+	/Users/machine/go/pkg/mod/github.com/consensys/gnark@v0.9.1/backend/groth16/bn254/prove.go:104 +0x8c8
+github.com/consensys/gnark/backend/groth16.Prove({0x1010325c0?, 0x1400015a908?}, {0x10102e858?, 0x140001b8408?}, {0x0?, 0x0?}, {0x0?, 0x100f0f020?, 0x1?})
+	/Users/machine/go/pkg/mod/github.com/consensys/gnark@v0.9.1/backend/groth16/groth16.go:179 +0x270
+noah-v2/circuit.TestKYCCircuit(0x14000003a40)
+	/Users/machine/Documents/Noah-v2/circuit/circuit_test.go:160 +0x8e4
+testing.tRunner(0x14000003a40, 0x101024a08)
+	/usr/local/go/src/testing/testing.go:1792 +0xe4
+created by testing.(*T).Run in goroutine 1
+	/usr/local/go/src/testing/testing.go:1851 +0x374
+FAIL	noah-v2/circuit	0.845s
+FAIL

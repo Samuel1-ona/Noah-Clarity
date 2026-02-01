@@ -1,13 +1,49 @@
 package main
 
 import (
-	"log"
+	"fmt"
+	"net/http"
+	"os"
+
+	"noah-v2/backend/pkg/health"
+	"noah-v2/backend/pkg/logger"
+	"noah-v2/backend/pkg/metrics"
+	"noah-v2/backend/pkg/middleware"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 func main() {
+	// Initialize logger
+	err := logger.Initialize(logger.Config{
+		Environment: os.Getenv("ENVIRONMENT"),
+		Level:       os.Getenv("LOG_LEVEL"),
+		Service:     "prover",
+		Version:     "1.0.0",
+	})
+	if err != nil {
+		fmt.Printf("Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Sync()
+
+	// Initialize metrics
+	metrics.Initialize(metrics.Config{
+		ServiceName: "prover",
+	})
+
+	// Start metrics server (on a different port if needed, or same if separate process)
+	go func() {
+		metricsMux := http.NewServeMux()
+		metricsMux.Handle("/metrics", metrics.Handler())
+		logger.Info("Starting metrics server", zap.String("port", "8082"))
+		if err := http.ListenAndServe(":8082", metricsMux); err != nil {
+			logger.Error("Metrics server failed", zap.Error(err))
+		}
+	}()
+
 	// Load configuration
 	config := LoadConfig()
 
@@ -16,11 +52,22 @@ func main() {
 
 	// Initialize circuit manager
 	if err := api.Initialize(); err != nil {
-		log.Fatalf("Failed to initialize circuit manager: %v", err)
+		logger.Fatal("Failed to initialize circuit manager", zap.Error(err))
 	}
+	metrics.SetCircuitInitialized(true)
 
 	// Setup routes
-	router := gin.Default()
+	router := gin.New()
+
+	// Add standard middleware
+	router.Use(logger.GinLogger())
+	router.Use(logger.GinRecovery())
+	router.Use(middleware.Security())
+	router.Use(metrics.HTTPMiddleware())
+
+	// Rate limiting
+	limiter := middleware.NewRateLimiter(50, 10) // Proving is expensive, lower limit
+	router.Use(limiter.Middleware())
 
 	// Configure CORS
 	router.Use(cors.New(cors.Config{
@@ -32,15 +79,26 @@ func main() {
 	}))
 
 	// Health check
-	router.GET("/health", api.HealthCheck)
+	healthConfig := health.Config{
+		ServiceName: "prover",
+		Version:     "1.0.0",
+		Checks: map[string]health.Checker{
+			"circuit": func() health.CheckResult {
+				// We could add more specific checks here
+				return health.CheckResult{Status: "healthy"}
+			},
+		},
+	}
+	router.GET("/health", health.Handler(healthConfig))
+	router.GET("/health/ready", health.ReadinessHandler())
+	router.GET("/health/live", health.LivenessHandler())
 
 	// Proof generation
 	router.POST("/proof/generate", api.GenerateProof)
 
 	// Start server
-	log.Printf("Starting prover service on port %s", config.Port)
+	logger.Info("Starting prover service", zap.String("port", config.Port))
 	if err := router.Run(":" + config.Port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		logger.Fatal("Failed to start server", zap.Error(err))
 	}
 }
-

@@ -4,13 +4,18 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strings"
 
+	"noah-v2/backend/pkg/health"
+	"noah-v2/backend/pkg/logger"
+	"noah-v2/backend/pkg/metrics"
+	"noah-v2/backend/pkg/middleware"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // discoverNextAvailableID queries the contract to find the next available attester ID
@@ -36,7 +41,7 @@ func discoverNextAvailableID(config *Config) (uint, error) {
 	// Try IDs starting from 1
 	for i := uint(0); i < maxAttempts; i++ {
 		testID := startID + i
-		
+
 		// Encode ID as Clarity uint (little-endian, 8 bytes)
 		idBytes := make([]byte, 8)
 		idBytes[0] = byte(testID)
@@ -66,9 +71,9 @@ func discoverNextAvailableID(config *Config) (uint, error) {
 
 		// If response contains error (attester not found), this ID is available
 		bodyStr := string(body)
-		if strings.Contains(bodyStr, "ERR_ATTESTER_NOT_FOUND") || 
-		   strings.Contains(bodyStr, "u1003") ||
-		   !strings.Contains(bodyStr, `"okay":true`) {
+		if strings.Contains(bodyStr, "ERR_ATTESTER_NOT_FOUND") ||
+			strings.Contains(bodyStr, "u1003") ||
+			!strings.Contains(bodyStr, `"okay":true`) {
 			// ID is not found, so it's available
 			return testID, nil
 		}
@@ -82,6 +87,34 @@ func main() {
 	// Load configuration
 	config := LoadConfig()
 
+	// Initialize logger
+	err := logger.Initialize(logger.Config{
+		Environment: os.Getenv("ENVIRONMENT"),
+		Level:       os.Getenv("LOG_LEVEL"),
+		Service:     "attester",
+		Version:     "1.0.0",
+	})
+	if err != nil {
+		fmt.Printf("Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Sync()
+
+	// Initialize metrics
+	metrics.Initialize(metrics.Config{
+		ServiceName: "attester",
+	})
+
+	// Start metrics server
+	go func() {
+		metricsMux := http.NewServeMux()
+		metricsMux.Handle("/metrics", metrics.Handler())
+		logger.Info("Starting metrics server", zap.String("port", "8081"))
+		if err := http.ListenAndServe(":8081", metricsMux); err != nil {
+			logger.Error("Metrics server failed", zap.Error(err))
+		}
+	}()
+
 	// Discover next available ID dynamically (unless explicitly set via env var)
 	attesterID := config.AttesterID
 	if os.Getenv("ATTESTER_ID") == "" {
@@ -89,46 +122,60 @@ func main() {
 		nextID, err := discoverNextAvailableID(config)
 		if err == nil {
 			attesterID = nextID
-			log.Printf("Auto-discovered next available Attester ID: %d", attesterID)
+			logger.Info("Auto-discovered next available Attester ID", zap.Uint("id", attesterID))
 		} else {
-			log.Printf("Could not discover next available ID, using configured ID %d: %v", config.AttesterID, err)
+			logger.Warn("Could not discover next available ID, using configured ID",
+				zap.Uint("id", config.AttesterID),
+				zap.Error(err))
 		}
 	} else {
-		log.Printf("Using explicitly configured Attester ID: %d", attesterID)
+		logger.Info("Using explicitly configured Attester ID", zap.Uint("id", attesterID))
 	}
 
 	// Generate or load signer
 	var signer *Signer
-	var err error
 	var privateKeyHex string
 
 	if config.PrivateKey == "" {
 		// Generate new key pair for development
 		privateKey, publicKey, err := GenerateKeyPair()
 		if err != nil {
-			log.Fatalf("Failed to generate key pair: %v", err)
+			logger.Fatal("Failed to generate key pair", zap.Error(err))
 		}
-		log.Printf("Generated new key pair (save private key securely):")
-		log.Printf("Private Key: %s", privateKey)
-		log.Printf("Public Key: %s", publicKey)
+		logger.Info("Generated new key pair (save private key securely)",
+			zap.String("private_key", privateKey),
+			zap.String("public_key", publicKey),
+		)
 		privateKeyHex = privateKey
 	} else {
 		privateKeyHex = config.PrivateKey
 	}
 
 	signer, err = NewSigner(privateKeyHex, attesterID)
-		if err != nil {
-			log.Fatalf("Failed to create signer: %v", err)
+	if err != nil {
+		logger.Fatal("Failed to create signer", zap.Error(err))
 	}
 
-	log.Printf("Attester ID: %d", signer.GetAttesterID())
-	log.Printf("Public Key: %s", signer.GetPublicKey())
+	logger.Info("Attester started",
+		zap.Uint("attester_id", signer.GetAttesterID()),
+		zap.String("public_key", signer.GetPublicKey()),
+	)
 
 	// Create API
 	api := NewAPI(signer)
 
 	// Setup routes
-	router := gin.Default()
+	router := gin.New() // Use gin.New() to add middleware manually
+
+	// Add standard middleware
+	router.Use(logger.GinLogger())
+	router.Use(logger.GinRecovery())
+	router.Use(middleware.Security())
+	router.Use(metrics.HTTPMiddleware())
+
+	// Rate limiting (100 requests per second, burst of 20)
+	limiter := middleware.NewRateLimiter(100, 20)
+	router.Use(limiter.Middleware())
 
 	// Configure CORS
 	router.Use(cors.New(cors.Config{
@@ -140,7 +187,21 @@ func main() {
 	}))
 
 	// Health check
-	router.GET("/health", api.HealthCheck)
+	healthConfig := health.Config{
+		ServiceName: "attester",
+		Version:     "1.0.0",
+		Checks: map[string]health.Checker{
+			"signer": func() health.CheckResult {
+				if signer != nil {
+					return health.CheckResult{Status: "healthy"}
+				}
+				return health.CheckResult{Status: "unhealthy", Message: "Signer not initialized"}
+			},
+		},
+	}
+	router.GET("/health", health.Handler(healthConfig))
+	router.GET("/health/ready", health.ReadinessHandler())
+	router.GET("/health/live", health.LivenessHandler())
 
 	// Attester info
 	router.GET("/info", api.GetAttesterInfo)
@@ -156,9 +217,8 @@ func main() {
 	router.GET("/revocation/check", api.CheckRevocationStatus)
 
 	// Start server
-	log.Printf("Starting attester service on port %s", config.Port)
+	logger.Info("Starting attester service", zap.String("port", config.Port))
 	if err := router.Run(":" + config.Port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		logger.Fatal("Failed to start server", zap.Error(err))
 	}
 }
-

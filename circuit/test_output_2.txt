@@ -1,0 +1,32 @@
+=== RUN   TestKYCCircuit
+    circuit_test.go:169: 
+        	Error Trace:	/Users/machine/Documents/Noah-v2/circuit/circuit_test.go:169
+        	Error:      	Received unexpected error:
+        	            	constraint #3534 is not satisfied: 1 ⋅ 6215895834811185654419435707185914924202706664762203904798205644216479797311 != 4307258457405679796053728219643051371654415018695719466155709530686372653941
+        	Test:       	TestKYCCircuit
+--- FAIL: TestKYCCircuit (0.42s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered]
+	panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x2 addr=0x0 pc=0x1049845bc]
+
+goroutine 19 [running]:
+testing.tRunner.func1.2({0x104b76ee0, 0x104f8ff40})
+	/usr/local/go/src/testing/testing.go:1734 +0x1ac
+testing.tRunner.func1()
+	/usr/local/go/src/testing/testing.go:1737 +0x334
+panic({0x104b76ee0?, 0x104f8ff40?})
+	/usr/local/go/src/runtime/panic.go:792 +0x124
+github.com/consensys/gnark/backend/groth16/bn254.(*Proof).isValid(0x0)
+	/Users/machine/go/pkg/mod/github.com/consensys/gnark@v0.9.1/backend/groth16/bn254/prove.go:50 +0x1c
+github.com/consensys/gnark/backend/groth16/bn254.Verify(0x0, 0x14000174008, {0x140000cc480, 0x4, 0x4})
+	/Users/machine/go/pkg/mod/github.com/consensys/gnark@v0.9.1/backend/groth16/bn254/verify.go:51 +0x33c
+github.com/consensys/gnark/backend/groth16.Verify({0x104c17b20?, 0x0}, {0x104c1ae08, 0x14000174008}, {0x104c1ad38?, 0x1400009c390?})
+	/Users/machine/go/pkg/mod/github.com/consensys/gnark@v0.9.1/backend/groth16/groth16.go:132 +0x1b0
+noah-v2/circuit.TestKYCCircuit(0x14000082e00)
+	/Users/machine/Documents/Noah-v2/circuit/circuit_test.go:174 +0x9f0
+testing.tRunner(0x14000082e00, 0x104c10a08)
+	/usr/local/go/src/testing/testing.go:1792 +0xe4
+created by testing.(*T).Run in goroutine 1
+	/usr/local/go/src/testing/testing.go:1851 +0x374
+FAIL	noah-v2/circuit	1.263s
+FAIL
