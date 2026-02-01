@@ -8,7 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"noah-v2/backend/pkg/logger"
+
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
+	"go.uber.org/zap"
 )
 
 // IssuerService handles credential issuance
@@ -25,11 +28,9 @@ type IssuerService struct {
 func NewIssuerService(signer *Signer) *IssuerService {
 	config := LoadConfig()
 	verifier := NewProofVerifier(config.VerifyingKeyPath)
-	store, err := NewStore("attester.db")
+	store, err := NewStore(config.DBType, config.DBDSN)
 	if err != nil {
 		fmt.Printf("Warning: Failed to initialize database store: %v\n", err)
-		// Fallback or exit? For now, let's log and proceed if possible,
-		// but in production we should probably exit.
 	}
 	revocation := NewRevocationService()
 	return &IssuerService{
@@ -61,10 +62,17 @@ func (is *IssuerService) IssueCredential(req *CredentialRequest) (*Credential, e
 		}
 	}
 
-	// 3. Generate commitment locked to the user's address
-	commitment, err := is.generateCommitment(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate commitment: %w", err)
+	// 3. Generate or use user-provided commitment
+	var commitment string
+	if req.UserCommitment != "" {
+		commitment = req.UserCommitment
+		logger.Debug("Using user-provided commitment", zap.String("user_id", req.UserID))
+	} else {
+		var err error
+		commitment, err = is.generateCommitment(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate commitment: %w", err)
+		}
 	}
 
 	// 3.5 Sign the commitment
@@ -136,10 +144,18 @@ func (is *IssuerService) GetCredential(userID string) (*Credential, error) {
 func (is *IssuerService) generateCommitment(req *CredentialRequest) (string, error) {
 	// Parse inputs into big.Int for MiMC
 	idData := new(big.Int)
-	idData.SetString(req.IdentityData, 0)
+	if req.IdentityData != "" {
+		idData.SetString(req.IdentityData, 0)
+	} else {
+		idData.SetInt64(0)
+	}
 
 	nonce := new(big.Int)
-	nonce.SetString(req.Nonce, 0)
+	if req.Nonce != "" {
+		nonce.SetString(req.Nonce, 0)
+	} else {
+		nonce.SetInt64(0)
+	}
 
 	addr := new(big.Int)
 	// If address is hex, parse it, otherwise use hash

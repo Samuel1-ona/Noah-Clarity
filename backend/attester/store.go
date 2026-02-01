@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -21,8 +22,19 @@ type Store struct {
 }
 
 // NewStore creates a new GORM store and performs migrations
-func NewStore(dbPath string) (*Store, error) {
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+func NewStore(dbType, dsn string) (*Store, error) {
+	var dialector gorm.Dialector
+
+	switch dbType {
+	case "postgres":
+		dialector = postgres.Open(dsn)
+	case "sqlite":
+		dialector = sqlite.Open(dsn)
+	default:
+		return nil, fmt.Errorf("unsupported database type: %s", dbType)
+	}
+
+	db, err := gorm.Open(dialector, &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}

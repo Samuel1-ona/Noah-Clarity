@@ -13,6 +13,8 @@ type Config struct {
 	VerifyingKeyPath string
 	AttesterRegistry string
 	StacksNetwork    string
+	DBType           string
+	DBDSN            string
 }
 
 // LoadConfig loads configuration from environment variables
@@ -24,6 +26,8 @@ func LoadConfig() *Config {
 		VerifyingKeyPath: getEnv("VERIFYING_KEY_PATH", "../prover/keys/verifying.key"),
 		AttesterRegistry: getEnv("ATTESTER_REGISTRY", "ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J.attester-registry"),
 		StacksNetwork:    getEnv("STACKS_NETWORK", "testnet"),
+		DBType:           getEnv("DB_TYPE", "sqlite"),
+		DBDSN:            getEnv("DB_DSN", "attester.db"),
 	}
 }
 

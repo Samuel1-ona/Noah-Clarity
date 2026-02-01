@@ -7,12 +7,26 @@ services:
       - "8081:8081"
     environment:
       - PORT=8081
-      - DB_PATH=/app/data/attester.db
+      - DB_TYPE=postgres
+      - DB_DSN=host=db user=postgres password=password dbname=noah port=5432 sslmode=disable
       - VERIFYING_KEY_PATH=/app/keys/kyc_verifying.key
       - ATTESTER_ID=1
     volumes:
       - attester-data:/app/data
-      - ./backend/prover/keys:/app/keys:ro # Share same keys for now
+      - ./backend/prover/keys:/app/keys:ro
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=noah
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 
   prover:
     build:
@@ -29,3 +43,4 @@ services:
 
 volumes:
   attester-data:
+  postgres-data:

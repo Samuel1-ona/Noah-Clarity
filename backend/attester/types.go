@@ -19,12 +19,13 @@ type EdDSAPublicKey struct {
 
 // CredentialRequest represents a request to issue a credential
 type CredentialRequest struct {
-	UserID       string                 `json:"user_id"`
-	UserAddress  string                 `json:"user_address"`
-	IdentityData string                 `json:"identity_data"` // Private data to be hidden in ZK
-	Nonce        string                 `json:"nonce"`         // Random salt
-	Attributes   map[string]interface{} `json:"attributes"`
-	Documents    []DocumentInfo         `json:"documents"` // Document info extracted via OCR
+	UserID         string                 `json:"user_id"`
+	UserAddress    string                 `json:"user_address"`
+	IdentityData   string                 `json:"identity_data,omitempty"` // Optional if UserCommitment provided
+	Nonce          string                 `json:"nonce,omitempty"`         // Optional if UserCommitment provided
+	UserCommitment string                 `json:"user_commitment,omitempty"`
+	Attributes     map[string]interface{} `json:"attributes"`
+	Documents      []DocumentInfo         `json:"documents"` // Document info extracted via OCR
 }
 
 // DocumentInfo represents verified data from an identity document
