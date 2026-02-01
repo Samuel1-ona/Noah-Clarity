@@ -1,78 +1,92 @@
 package main
 
 import (
-	"encoding/json"
-	"os"
-	"sync"
+	"fmt"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
-// Store represents a simple persistent key-value store
+// IdentityBinding represents the database model for identity to address mapping
+type IdentityBinding struct {
+	gorm.Model
+	Fingerprint string `gorm:"uniqueIndex;not null"` // Identity fingerprint (nullifier)
+	Address     string `gorm:"uniqueIndex;not null"` // Blockchain address
+	Commitment  string // Current commitment hash
+}
+
+// Store represents the GORM-backed store
 type Store struct {
-	IdentityToAddress map[string]string `json:"identity_to_address"` // IdentityFingerprint -> UserAddress
-	AddressToCommit   map[string]string `json:"address_to_commit"`   // UserAddress -> Commitment
-	mu                sync.RWMutex
-	filePath          string
+	db *gorm.DB
 }
 
-// NewStore creates a new store and loads data from file if it exists
-func NewStore(filePath string) (*Store, error) {
-	s := &Store{
-		IdentityToAddress: make(map[string]string),
-		AddressToCommit:   make(map[string]string),
-		filePath:          filePath,
-	}
-
-	if _, err := os.Stat(filePath); err == nil {
-		data, err := os.ReadFile(filePath)
-		if err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal(data, s); err != nil {
-			return nil, err
-		}
-	}
-
-	return s, nil
-}
-
-// Save writes the store data to disk
-func (s *Store) Save() error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	data, err := json.MarshalIndent(s, "", "  ")
+// NewStore creates a new GORM store and performs migrations
+func NewStore(dbPath string) (*Store, error) {
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	return os.WriteFile(s.filePath, data, 0644)
+
+	// Auto Migrate the schema
+	if err := db.AutoMigrate(&IdentityBinding{}); err != nil {
+		return nil, fmt.Errorf("failed to migrate database: %w", err)
+	}
+
+	return &Store{db: db}, nil
+}
+
+// Save is a no-op for the database store (GORM handles persistence immediately)
+func (s *Store) Save() error {
+	return nil
 }
 
 // SetIdentity binds an identity fingerprint to an address
 func (s *Store) SetIdentity(fingerprint, address string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.IdentityToAddress[fingerprint] = address
+	var binding IdentityBinding
+	result := s.db.Where("fingerprint = ?", fingerprint).First(&binding)
+	if result.Error == gorm.ErrRecordNotFound {
+		s.db.Create(&IdentityBinding{
+			Fingerprint: fingerprint,
+			Address:     address,
+		})
+	} else {
+		binding.Address = address
+		s.db.Save(&binding)
+	}
 }
 
 // GetAddress retrieves the address linked to a fingerprint
 func (s *Store) GetAddress(fingerprint string) (string, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	addr, ok := s.IdentityToAddress[fingerprint]
-	return addr, ok
+	var binding IdentityBinding
+	result := s.db.Where("fingerprint = ?", fingerprint).First(&binding)
+	if result.Error != nil {
+		return "", false
+	}
+	return binding.Address, true
 }
 
 // SetCommitment links an address to a commitment
 func (s *Store) SetCommitment(address, commitment string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.AddressToCommit[address] = commitment
+	var binding IdentityBinding
+	result := s.db.Where("address = ?", address).First(&binding)
+	if result.Error == nil {
+		binding.Commitment = commitment
+		s.db.Save(&binding)
+	} else {
+		// If address doesn't exist yet but we want to set commitment (shouldn't happen in current flow)
+		s.db.Create(&IdentityBinding{
+			Address:    address,
+			Commitment: commitment,
+		})
+	}
 }
 
 // GetCommitment retrieves the commitment for an address
 func (s *Store) GetCommitment(address string) (string, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	commit, ok := s.AddressToCommit[address]
-	return commit, ok
+	var binding IdentityBinding
+	result := s.db.Where("address = ?", address).First(&binding)
+	if result.Error != nil {
+		return "", false
+	}
+	return binding.Commitment, true
 }
