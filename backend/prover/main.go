@@ -36,14 +36,20 @@ func main() {
 	// Load configuration
 	config := LoadConfig()
 
-	// Create API
-	api := NewAPI()
-
 	// Initialize circuit manager
-	if err := api.Initialize(); err != nil {
+	cm := NewCircuitManager()
+	if err := cm.Initialize(); err != nil {
 		logger.Fatal("Failed to initialize circuit manager", zap.Error(err))
 	}
 	metrics.SetCircuitInitialized(true)
+
+	// Initialize worker
+	worker := NewJobWorker(cm)
+	worker.Start()
+	logger.Info("Background job worker started")
+
+	// Create API
+	api := NewAPI(cm, worker)
 
 	// Setup routes
 	router := gin.New()
@@ -84,6 +90,7 @@ func main() {
 
 	// Proof generation
 	router.POST("/proof/generate", api.GenerateProof)
+	router.GET("/proof/status/:id", api.GetJobStatus)
 
 	// Metrics
 	router.GET("/metrics", gin.WrapH(metrics.Handler()))
