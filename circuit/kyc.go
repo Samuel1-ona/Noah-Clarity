@@ -37,6 +37,10 @@ func (circuit *KYCCircuit) Define(api frontend.API) error {
 	// Constraint: Age >= MinAge
 	api.AssertIsLessOrEqual(circuit.MinAge, circuit.Age)
 
+	// Additional safety: Ensure inputs that are supposed to be boolean are constrained
+	api.AssertIsBoolean(circuit.IsAccredited)
+	api.AssertIsBoolean(circuit.RequireAccreditation)
+
 	// 2. Jurisdiction Verification (Merkle Proof)
 	// Check if circuit.Jurisdiction is a leaf in the tree with root circuit.JurisdictionRoot
 	// We use MiMC as the hash function for the Merkle tree
