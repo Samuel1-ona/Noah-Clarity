@@ -18,11 +18,12 @@ func padHex(s string) string {
 func TestReconstructPublicWitnessOptimized(t *testing.T) {
 	pv := NewProofVerifier("../prover/keys/verifying.key")
 
-	// New optimized structure: [MinAge, JurisdictionRoot, RequireAccreditation, Commitment]
+	// New optimized structure: [MinAge, JurisdictionRoot, RequireAccreditation, UserAddress, Commitment]
 	publicInputs := []string{
 		padHex(big.NewInt(18).Text(16)),    // MinAge
 		padHex(big.NewInt(12345).Text(16)), // JurisdictionRoot (Merkle root)
 		padHex(big.NewInt(0).Text(16)),     // RequireAccreditation
+		padHex(big.NewInt(111).Text(16)),   // UserAddress
 		padHex(big.NewInt(67890).Text(16)), // Commitment
 	}
 
@@ -67,6 +68,15 @@ func TestReconstructPublicWitnessOptimized(t *testing.T) {
 	if commitment.Int64() != 67890 {
 		t.Errorf("Expected Commitment to be 67890, got %d", commitment.Int64())
 	}
+
+	// Verify UserAddress
+	userAddr, ok := witness.UserAddress.(*big.Int)
+	if !ok {
+		t.Fatal("Failed to cast UserAddress to *big.Int")
+	}
+	if userAddr.Int64() != 111 {
+		t.Errorf("Expected UserAddress to be 111, got %d", userAddr.Int64())
+	}
 }
 
 // TestReconstructPublicWitnessInvalidInputCount tests error handling for wrong number of inputs
@@ -88,6 +98,7 @@ func TestReconstructPublicWitnessInvalidInputCount(t *testing.T) {
 		padHex(big.NewInt(18).Text(16)),
 		padHex(big.NewInt(12345).Text(16)),
 		padHex(big.NewInt(0).Text(16)),
+		padHex(big.NewInt(111).Text(16)),
 		padHex(big.NewInt(67890).Text(16)),
 		padHex(big.NewInt(999).Text(16)), // Extra input
 	}
@@ -107,6 +118,7 @@ func TestReconstructPublicWitnessInvalidHex(t *testing.T) {
 		"INVALID_HEX",                      // Invalid MinAge
 		padHex(big.NewInt(12345).Text(16)), // JurisdictionRoot
 		padHex(big.NewInt(0).Text(16)),     // RequireAccreditation
+		padHex(big.NewInt(111).Text(16)),   // UserAddress
 		padHex(big.NewInt(67890).Text(16)), // Commitment
 	}
 
@@ -128,6 +140,7 @@ func TestReconstructPublicWitnessLargeValues(t *testing.T) {
 		padHex(big.NewInt(21).Text(16)), // MinAge
 		padHex(largeValue.Text(16)),     // JurisdictionRoot (large value)
 		padHex(big.NewInt(1).Text(16)),  // RequireAccreditation
+		padHex(largeValue.Text(16)),     // UserAddress
 		padHex(largeValue.Text(16)),     // Commitment (large value)
 	}
 

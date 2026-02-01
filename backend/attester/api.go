@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -14,15 +15,18 @@ import (
 type API struct {
 	issuerService     *IssuerService
 	revocationService *RevocationService
+	ocrService        *OCRService
 	signer            *Signer
 	config            *Config
 }
 
 // NewAPI creates a new API handler
 func NewAPI(signer *Signer) *API {
+	issuer := NewIssuerService(signer)
 	return &API{
-		issuerService:     NewIssuerService(signer),
-		revocationService: NewRevocationService(),
+		issuerService:     issuer,
+		revocationService: issuer.revocationService, // Use the same service
+		ocrService:        NewOCRService(),
 		signer:            signer,
 		config:            LoadConfig(),
 	}
@@ -51,6 +55,35 @@ func (api *API) IssueCredential(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success":    true,
 		"credential": credential,
+	})
+}
+
+// VerifyPassport handles passport image upload and OCR extraction
+func (api *API) VerifyPassport(c *gin.Context) {
+	file, err := c.FormFile("passport")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Passport image is required"})
+		return
+	}
+
+	// Save file temporarily
+	tempPath := "temp_" + file.Filename
+	if err := c.SaveUploadedFile(file, tempPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
+		return
+	}
+	defer os.Remove(tempPath)
+
+	// Extract info using OCR
+	docInfo, err := api.ocrService.ExtractPassportInfo(tempPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    docInfo,
 	})
 }
 
@@ -184,7 +217,7 @@ func (api *API) findNextAvailableID() (uint, error) {
 	// Try IDs starting from the configured ID
 	for i := uint(0); i < maxAttempts; i++ {
 		testID := startID + i
-		
+
 		// Encode ID as Clarity uint (little-endian, 8 bytes)
 		idBytes := make([]byte, 8)
 		idBytes[0] = byte(testID)
@@ -214,9 +247,9 @@ func (api *API) findNextAvailableID() (uint, error) {
 
 		// If response contains error (attester not found), this ID is available
 		bodyStr := string(body)
-		if strings.Contains(bodyStr, "ERR_ATTESTER_NOT_FOUND") || 
-		   strings.Contains(bodyStr, "u1003") ||
-		   !strings.Contains(bodyStr, `"okay":true`) {
+		if strings.Contains(bodyStr, "ERR_ATTESTER_NOT_FOUND") ||
+			strings.Contains(bodyStr, "u1003") ||
+			!strings.Contains(bodyStr, `"okay":true`) {
 			// ID is not found, so it's available
 			return testID, nil
 		}
@@ -225,4 +258,3 @@ func (api *API) findNextAvailableID() (uint, error) {
 	// If we've tried many IDs and all are taken, return an error
 	return 0, fmt.Errorf("could not find available ID after %d attempts", maxAttempts)
 }
-

@@ -59,6 +59,7 @@ func (pv *ProofVerifier) Initialize() error {
 		MinAge:               0,
 		JurisdictionRoot:     0,
 		RequireAccreditation: 0,
+		UserAddress:          0,
 		Commitment:           0,
 	}
 
@@ -172,11 +173,11 @@ func (pv *ProofVerifier) reconstructPublicWitness(publicInputs []string) (*circu
 	// #endregion agent log
 
 	// New optimized circuit structure:
-	// Public inputs: [MinAge, JurisdictionRoot, RequireAccreditation, Commitment]
-	expectedInputs := 4
+	// Public inputs: [MinAge, JurisdictionRoot, RequireAccreditation, UserAddress, Commitment]
+	expectedInputs := 5
 	if len(publicInputs) != expectedInputs {
 		logFile.Close()
-		return nil, fmt.Errorf("invalid public inputs: expected %d inputs (MinAge, JurisdictionRoot, RequireAccreditation, Commitment), got %d", expectedInputs, len(publicInputs))
+		return nil, fmt.Errorf("invalid public inputs: expected %d inputs (MinAge, JurisdictionRoot, RequireAccreditation, UserAddress, Commitment), got %d", expectedInputs, len(publicInputs))
 	}
 
 	// Parse MinAge (first input)
@@ -203,8 +204,16 @@ func (pv *ProofVerifier) reconstructPublicWitness(publicInputs []string) (*circu
 	}
 	requireAccred := new(big.Int).SetBytes(requireAccredBytes)
 
-	// Parse Commitment (fourth input)
-	commitmentBytes, err := hex.DecodeString(publicInputs[3])
+	// Parse UserAddress (fourth input)
+	userAddressBytes, err := hex.DecodeString(publicInputs[3])
+	if err != nil {
+		logFile.Close()
+		return nil, fmt.Errorf("invalid UserAddress hex: %w", err)
+	}
+	userAddress := new(big.Int).SetBytes(userAddressBytes)
+
+	// Parse Commitment (fifth input)
+	commitmentBytes, err := hex.DecodeString(publicInputs[4])
 	if err != nil {
 		logFile.Close()
 		return nil, fmt.Errorf("invalid Commitment hex: %w", err)
@@ -223,6 +232,7 @@ func (pv *ProofVerifier) reconstructPublicWitness(publicInputs []string) (*circu
 		MinAge:               minAge,
 		JurisdictionRoot:     jurisdictionRoot,
 		RequireAccreditation: requireAccred,
+		UserAddress:          userAddress,
 		Commitment:           commitment,
 	}, nil
 }

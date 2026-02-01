@@ -103,6 +103,9 @@ func validateProofRequest(req *ProofRequest) error {
 	if req.JurisdictionRoot.Int == nil {
 		return fmt.Errorf("jurisdiction_root cannot be empty")
 	}
+	if req.UserAddress.Int == nil {
+		return fmt.Errorf("user_address cannot be empty")
+	}
 	// Commitment can be empty (will be computed internally)
 	if req.Commitment.Int == nil {
 		return fmt.Errorf("invalid commitment")

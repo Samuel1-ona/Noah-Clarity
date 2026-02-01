@@ -73,6 +73,7 @@ type ProofRequest struct {
 	MinAge               BigIntString `json:"min_age"`
 	JurisdictionRoot     BigIntString `json:"jurisdiction_root"`
 	RequireAccreditation BigIntString `json:"require_accreditation"`
+	UserAddress          BigIntString `json:"user_address"`
 	Commitment           BigIntString `json:"commitment"`
 }
 

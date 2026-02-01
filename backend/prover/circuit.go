@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
+
 
 	"noah-v2/circuit"
 
@@ -55,6 +55,7 @@ func (cm *CircuitManager) Initialize() error {
 		MinAge:               0,
 		JurisdictionRoot:     0,
 		RequireAccreditation: 0,
+		UserAddress:          0,
 		Commitment:           0,
 	}
 
@@ -138,9 +139,9 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 	// Create witness from request
 	// The circuit now uses Merkle proofs for jurisdiction verification
 
-	// Compute the commitment from identity data and nonce (matches circuit logic)
-	// The circuit computes: MiMC(IdentityData || Nonce)
-	computedCommitment, err := computeCommitment(req.IdentityData.Int, req.Nonce.Int)
+	// Compute the commitment from identity data, nonce, and user address (matches circuit logic)
+	// The circuit computes: MiMC(IdentityData || Nonce || UserAddress)
+	computedCommitment, err := computeCommitment(req.IdentityData.Int, req.Nonce.Int, req.UserAddress.Int)
 	if err != nil {
 		return &ProofResponse{
 			Success: false,
@@ -162,6 +163,7 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 		MinAge:               req.MinAge.Int,
 		JurisdictionRoot:     req.JurisdictionRoot.Int,
 		RequireAccreditation: req.RequireAccreditation.Int,
+		UserAddress:          req.UserAddress.Int,
 		Commitment:           computedCommitment, // Use computed commitment
 	}
 
@@ -205,7 +207,7 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 	}
 
 	// Extract public inputs from witness in the correct order
-	// New optimized circuit public inputs: MinAge, JurisdictionRoot, RequireAccreditation, Commitment
+	// New optimized circuit public inputs: MinAge, JurisdictionRoot, RequireAccreditation, UserAddress, Commitment
 	publicInputs := make([]string, 0)
 
 	// padHex ensures hex string is even length by padding with leading zero if needed
@@ -216,11 +218,7 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 		return s
 	}
 
-	// #region agent log
-	logFile, _ := os.OpenFile("/Users/machine/Documents/Noah-v2/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	logEntry := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"circuit.go:229","message":"Starting public inputs construction (optimized)","data":{"computedCommitmentHex":"%s"},"timestamp":%d}`+"\n", padHex(computedCommitment.Text(16)), time.Now().UnixMilli())
-	logFile.WriteString(logEntry)
-	// #endregion agent log
+
 
 	// Add MinAge
 	minAgeHex := padHex(req.MinAge.Int.Text(16))
@@ -234,15 +232,15 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 	requireAccredHex := padHex(req.RequireAccreditation.Int.Text(16))
 	publicInputs = append(publicInputs, requireAccredHex)
 
+	// Add UserAddress
+	userAddrHex := padHex(req.UserAddress.Int.Text(16))
+	publicInputs = append(publicInputs, userAddrHex)
+
 	// Add Commitment (use computed commitment)
 	commitmentHex := padHex(computedCommitment.Text(16))
 	publicInputs = append(publicInputs, commitmentHex)
 
-	// #region agent log
-	logEntry2 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"circuit.go:278","message":"Final public inputs (optimized)","data":{"totalCount":%d,"minAge":"%s","jurisdictionRoot":"%s","requireAccred":"%s","commitment":"%s"},"timestamp":%d}`+"\n", len(publicInputs), minAgeHex, jurisdictionRootHex, requireAccredHex, commitmentHex, time.Now().UnixMilli())
-	logFile.WriteString(logEntry2)
-	logFile.Close()
-	// #endregion agent log
+
 
 	_ = publicWitness // Use publicWitness for verification later
 

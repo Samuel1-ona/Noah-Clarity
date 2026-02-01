@@ -204,6 +204,7 @@ func main() {
 	router.POST("/credential/issue", api.IssueCredential)
 	router.POST("/credential/attest", api.CreateAttestation)
 	router.POST("/credential/revoke", api.RevokeCredential)
+	router.POST("/passport/verify", api.VerifyPassport)
 
 	// Revocation
 	router.GET("/revocation/root", api.GetRevocationRoot)

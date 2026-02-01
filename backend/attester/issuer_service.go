@@ -3,39 +3,60 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
+	"math/big"
+	"strings"
 	"time"
+
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
 )
 
 // IssuerService handles credential issuance
 type IssuerService struct {
-	signer      *Signer
-	credentials map[string]*Credential
-	verifier    *ProofVerifier
-	config      *Config
+	signer            *Signer
+	store             *Store
+	revocationService *RevocationService
+	credentials       map[string]*Credential
+	verifier          *ProofVerifier
+	config            *Config
 }
 
 // NewIssuerService creates a new issuer service
 func NewIssuerService(signer *Signer) *IssuerService {
 	config := LoadConfig()
 	verifier := NewProofVerifier(config.VerifyingKeyPath)
+	store, _ := NewStore("attester_db.json") // Simple persistent store
+	revocation := NewRevocationService()
 	return &IssuerService{
-		signer:      signer,
-		credentials: make(map[string]*Credential),
-		verifier:    verifier,
-		config:      config,
+		signer:            signer,
+		store:             store,
+		revocationService: revocation,
+		credentials:       make(map[string]*Credential),
+		verifier:          verifier,
+		config:            config,
 	}
 }
 
 // IssueCredential issues a new credential to a user
 func (is *IssuerService) IssueCredential(req *CredentialRequest) (*Credential, error) {
-	// In a real implementation, this would:
-	// 1. Verify user identity documents
-	// 2. Perform KYC checks
-	// 3. Generate a commitment from the credential data
+	// 1. Generate Identity Fingerprint (Nullifier)
+	if len(req.Documents) == 0 {
+		return nil, fmt.Errorf("at least one document is required")
+	}
+	fingerprint := is.generateIdentityFingerprint(req.Documents[0])
 
-	// Generate commitment from credential data
+	// 2. Sybil Check: Has this document been used by another address?
+	if existingAddr, exists := is.store.GetAddress(fingerprint); exists {
+		if existingAddr != req.UserAddress {
+			// Check if previous commitment is revoked
+			oldCommit, _ := is.store.GetCommitment(existingAddr)
+			if !is.revocationService.IsRevoked(oldCommit) {
+				return nil, fmt.Errorf("this identity is already registered with address %s. Revoke it first to migrate", existingAddr)
+			}
+		}
+	}
+
+	// 3. Generate commitment locked to the user's address
 	commitment, err := is.generateCommitment(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate commitment: %w", err)
@@ -47,11 +68,16 @@ func (is *IssuerService) IssueCredential(req *CredentialRequest) (*Credential, e
 		Attributes: req.Attributes,
 		Commitment: commitment,
 		IssuedAt:   time.Now().Unix(),
-		ExpiresAt:  time.Now().Add(365 * 24 * time.Hour).Unix(), // 1 year expiry
+		ExpiresAt:  time.Now().Add(365 * 24 * time.Hour).Unix(),
 		AttesterID: is.signer.GetAttesterID(),
 	}
 
-	// Store credential
+	// 4. Update Store
+	is.store.SetIdentity(fingerprint, req.UserAddress)
+	is.store.SetCommitment(req.UserAddress, commitment)
+	_ = is.store.Save()
+
+	// Store in-memory for quick access
 	is.credentials[req.UserID] = credential
 
 	return credential, nil
@@ -66,20 +92,40 @@ func (is *IssuerService) GetCredential(userID string) (*Credential, error) {
 	return credential, nil
 }
 
-// generateCommitment generates a commitment hash from credential data
+// generateCommitment generates a MiMC commitment hash locked to user address
 func (is *IssuerService) generateCommitment(req *CredentialRequest) (string, error) {
-	// Serialize credential data
-	data, err := json.Marshal(req.Attributes)
-	if err != nil {
-		return "", err
+	// Parse inputs into big.Int for MiMC
+	idData := new(big.Int)
+	idData.SetString(req.IdentityData, 0)
+
+	nonce := new(big.Int)
+	nonce.SetString(req.Nonce, 0)
+
+	addr := new(big.Int)
+	// If address is hex, parse it, otherwise use hash
+	if strings.HasPrefix(req.UserAddress, "0x") {
+		addr.SetString(req.UserAddress, 0)
+	} else {
+		// Fallback for non-hex addresses (e.g. Stacks principal)
+		// We hash it to fit in a field element
+		h := sha256.Sum256([]byte(req.UserAddress))
+		addr.SetBytes(h[:])
 	}
 
-	// Add user ID
-	data = append(data, []byte(req.UserID)...)
+	hashFunc := mimc.NewMiMC()
+	hashFunc.Write(idData.Bytes())
+	hashFunc.Write(nonce.Bytes())
+	hashFunc.Write(addr.Bytes())
 
-	// Hash the data
-	hash := sha256.Sum256(data)
-	return hex.EncodeToString(hash[:]), nil
+	result := hashFunc.Sum(nil)
+	return "0x" + hex.EncodeToString(result), nil
+}
+
+// generateIdentityFingerprint creates a unique, private hash for a document
+func (is *IssuerService) generateIdentityFingerprint(doc DocumentInfo) string {
+	raw := fmt.Sprintf("%s:%s:%s", doc.Type, doc.Number, doc.Country)
+	hash := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(hash[:])
 }
 
 // VerifyProof verifies a ZK proof using groth16.Verify
@@ -125,4 +171,3 @@ func (is *IssuerService) CreateAttestation(req *AttestationRequest) (*Attestatio
 		Success:    true,
 	}, nil
 }
-

@@ -27,6 +27,7 @@ type KYCCircuit struct {
 	MinAge               frontend.Variable `gnark:",public"`
 	JurisdictionRoot     frontend.Variable `gnark:",public"` // Root of allowed jurisdictions tree
 	RequireAccreditation frontend.Variable `gnark:",public"` // 1 if accreditation required, 0 otherwise
+	UserAddress          frontend.Variable `gnark:",public"` // The user's blockchain address
 	Commitment           frontend.Variable `gnark:",public"`
 }
 
@@ -85,11 +86,12 @@ func (circuit *KYCCircuit) Define(api frontend.API) error {
 	api.AssertIsEqual(check, 0)
 
 	// 4. Identity Commitment Verification
-	// Recompute commitment: Hash(IdentityData, Nonce) == Commitment
+	// Recompute commitment: Hash(IdentityData, Nonce, UserAddress) == Commitment
 	// We reuse the same MiMC instance for efficiency within the circuit
 	mimcHash.Reset()
 	mimcHash.Write(circuit.IdentityData)
 	mimcHash.Write(circuit.Nonce)
+	mimcHash.Write(circuit.UserAddress)
 	computedCommitment := mimcHash.Sum()
 
 	api.AssertIsEqual(circuit.Commitment, computedCommitment)

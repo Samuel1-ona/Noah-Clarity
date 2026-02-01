@@ -65,6 +65,15 @@ The service is now running at `http://localhost:8080`. You can test it's working
 The attester service handles identity verification and signing. This is the "trusted authority" that verifies users and signs their proofs.
 
 ```bash
+
+IMPORTANT
+
+Build Requirements (macOS) To build the attester with OCR support, you must have Tesseract installed (brew install tesseract). You may also need to set the following environment variables if the compiler cannot find the headers:
+
+export CPATH=/opt/homebrew/include
+export LIBRARY_PATH=/opt/homebrew/lib
+go build .
+
 cd backend/attester
 go run main.go
 ```
