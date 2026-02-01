@@ -105,16 +105,6 @@ func main() {
 		ServiceName: "attester",
 	})
 
-	// Start metrics server
-	go func() {
-		metricsMux := http.NewServeMux()
-		metricsMux.Handle("/metrics", metrics.Handler())
-		logger.Info("Starting metrics server", zap.String("port", "8081"))
-		if err := http.ListenAndServe(":8081", metricsMux); err != nil {
-			logger.Error("Metrics server failed", zap.Error(err))
-		}
-	}()
-
 	// Discover next available ID dynamically (unless explicitly set via env var)
 	attesterID := config.AttesterID
 	if os.Getenv("ATTESTER_ID") == "" {
@@ -206,6 +196,9 @@ func main() {
 	// Attester info
 	router.GET("/info", api.GetAttesterInfo)
 	router.GET("/info/next-available-id", api.GetNextAvailableID)
+
+	// Metrics
+	router.GET("/metrics", gin.WrapH(metrics.Handler()))
 
 	// Credential operations
 	router.POST("/credential/issue", api.IssueCredential)

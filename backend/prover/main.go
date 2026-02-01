@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 
 	"noah-v2/backend/pkg/health"
@@ -33,16 +32,6 @@ func main() {
 	metrics.Initialize(metrics.Config{
 		ServiceName: "prover",
 	})
-
-	// Start metrics server (on a different port if needed, or same if separate process)
-	go func() {
-		metricsMux := http.NewServeMux()
-		metricsMux.Handle("/metrics", metrics.Handler())
-		logger.Info("Starting metrics server", zap.String("port", "8082"))
-		if err := http.ListenAndServe(":8082", metricsMux); err != nil {
-			logger.Error("Metrics server failed", zap.Error(err))
-		}
-	}()
 
 	// Load configuration
 	config := LoadConfig()
@@ -95,6 +84,9 @@ func main() {
 
 	// Proof generation
 	router.POST("/proof/generate", api.GenerateProof)
+
+	// Metrics
+	router.GET("/metrics", gin.WrapH(metrics.Handler()))
 
 	// Start server
 	logger.Info("Starting prover service", zap.String("port", config.Port))
