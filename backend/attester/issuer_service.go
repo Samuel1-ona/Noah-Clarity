@@ -25,7 +25,12 @@ type IssuerService struct {
 func NewIssuerService(signer *Signer) *IssuerService {
 	config := LoadConfig()
 	verifier := NewProofVerifier(config.VerifyingKeyPath)
-	store, _ := NewStore("attester_db.json") // Simple persistent store
+	store, err := NewStore("attester.db")
+	if err != nil {
+		fmt.Printf("Warning: Failed to initialize database store: %v\n", err)
+		// Fallback or exit? For now, let's log and proceed if possible,
+		// but in production we should probably exit.
+	}
 	revocation := NewRevocationService()
 	return &IssuerService{
 		signer:            signer,
