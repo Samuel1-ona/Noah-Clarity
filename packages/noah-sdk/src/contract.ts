@@ -1,7 +1,3 @@
-/**
- * Clarity contract interaction helpers
- */
-
 import {
   makeContractCall,
   broadcastTransaction,
@@ -10,38 +6,44 @@ import {
   bufferCV,
   uintCV,
   principalCV,
-  getAddressFromPrivateKey,
   cvToJSON,
   callReadOnlyFunction,
 } from '@stacks/transactions';
 import { StacksNetwork, StacksTestnet, StacksMainnet } from '@stacks/network';
 import { SDKConfig, KYCStatus, RegisterKYCParams, AttesterRecord, RevocationStats } from './types';
+import { ContractError } from './errors';
 
+/**
+ * KYC Registry Contract Interaction Service
+ */
 export class KYCContract {
-  private config: SDKConfig;
   private network: StacksNetwork;
+  private config: SDKConfig;
 
   constructor(config: SDKConfig) {
     this.config = config;
-    this.network = this.getNetwork();
-  }
+    const networkOptions = config.stacksApiUrl ? { url: config.stacksApiUrl } : undefined;
 
-  private getNetwork(): StacksNetwork {
-    switch (this.config.network) {
-      case 'mainnet':
-        return new StacksMainnet();
-      case 'testnet':
-        return new StacksTestnet();
-      default:
-        return new StacksTestnet();
+    if (config.network === 'mainnet') {
+      this.network = new StacksMainnet(networkOptions);
+    } else {
+      this.network = new StacksTestnet(networkOptions);
     }
   }
 
   /**
+   * Helper to parse and wrap contract errors
+   */
+  private wrapError(error: any): ContractError {
+    const message = error.message || String(error);
+    if (message.includes('error 403')) return new ContractError('Unauthorized: Not contract owner', error);
+    if (message.includes('error 401')) return new ContractError('Unauthorized: Not authorized attester', error);
+    if (message.includes('error 100')) return new ContractError('Invalid Input: User already registered', error);
+    return new ContractError(`Blockchain error: ${message}`, error);
+  }
+
+  /**
    * Register KYC on-chain
-   * @param params Registration parameters
-   * @param privateKey Private key for signing transaction
-   * @returns Transaction ID
    */
   async registerKYC(
     params: RegisterKYCParams,
@@ -52,171 +54,41 @@ export class KYCContract {
       fee?: number;
     }
   ): Promise<string> {
-    const senderAddress = getAddressFromPrivateKey(privateKey, this.network.version);
+    const { address: registryAddr, name: registryName } = this.parseContractAddress(this.config.kycRegistryAddress);
 
-    const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
-
-    // Ensure commitment is exactly 32 bytes (64 hex chars)
-    const commitmentHex = params.commitment.replace('0x', '');
-    const commitmentBuffer = Buffer.from(commitmentHex, 'hex');
+    const commitmentBuffer = Buffer.from(params.commitment.replace('0x', ''), 'hex');
     if (commitmentBuffer.length !== 32) {
-      throw new Error(`Invalid commitment length: expected 32 bytes, got ${commitmentBuffer.length}. Hex: ${commitmentHex.substring(0, 20)}...`);
+      throw new ContractError(`Invalid commitment length: expected 32 bytes, got ${commitmentBuffer.length}`);
     }
 
-    // Ensure signature is 64 or 65 bytes (128 or 130 hex chars)
-    const signatureHex = params.signature.replace('0x', '');
-    const signatureBuffer = Buffer.from(signatureHex, 'hex');
+    const signatureBuffer = Buffer.from(params.signature.replace('0x', ''), 'hex');
     if (signatureBuffer.length !== 64 && signatureBuffer.length !== 65) {
-      throw new Error(`Invalid signature length: expected 64 or 65 bytes, got ${signatureBuffer.length}. Hex: ${signatureHex.substring(0, 20)}...`);
+      throw new ContractError(`Invalid signature length: expected 64 or 65 bytes, got ${signatureBuffer.length}`);
     }
-
-    const functionArgs = [
-      bufferCV(commitmentBuffer),
-      bufferCV(signatureBuffer),
-      uintCV(params.attesterId),
-    ];
-
-    const txOptions = {
-      contractAddress: address,
-      contractName: name,
-      functionName: 'register-kyc',
-      functionArgs,
-      senderKey: privateKey,
-      fee: options?.fee || 5000, // microSTX
-      network: this.network,
-      anchorMode: AnchorMode.Any,
-      postConditionMode: options?.postConditionMode || PostConditionMode.Allow,
-      postConditions: options?.postConditions || [],
-    };
 
     try {
-      const transaction = await makeContractCall(txOptions);
-
-      try {
-        const broadcastResponse = await broadcastTransaction(transaction, this.network);
-        return broadcastResponse.txid;
-      } catch (broadcastError: any) {
-        // Log the error immediately with console.error to ensure we see it
-        console.error('broadcastTransaction error:', broadcastError);
-        // Re-throw to be caught by outer catch block
-        throw broadcastError;
-      }
-    } catch (error: any) {
-      // Helper function to safely serialize data (handles BigInt)
-      const safeStringify = (obj: any): string => {
-        try {
-          return JSON.stringify(obj, (key, value) => {
-            if (typeof value === 'bigint') {
-              return value.toString();
-            }
-            return value;
-          });
-        } catch (e) {
-          return String(obj);
-        }
-      };
-
-      // Helper function to safely extract error data (handles BigInt)
-      const safeExtract = (obj: any): any => {
-        if (obj === null || obj === undefined) return obj;
-        if (typeof obj === 'string') return obj;
-        if (typeof obj === 'bigint') return obj.toString();
-        if (typeof obj !== 'object') return obj;
-        const result: any = {};
-        try {
-          for (const key in obj) {
-            if (Object.prototype.hasOwnProperty.call(obj, key)) {
-              const value = obj[key];
-              if (typeof value === 'bigint') {
-                result[key] = value.toString();
-              } else if (typeof value === 'object' && value !== null) {
-                result[key] = safeExtract(value);
-              } else {
-                result[key] = value;
-              }
-            }
-          }
-        } catch (e) {
-          return String(obj);
-        }
-        return result;
-      };
-
-      // Capture detailed error information
-      let errorMessage = 'Transaction failed';
-      let errorDetails: any = {};
-
-      if (error instanceof Error) {
-        errorMessage = error.message;
-        errorDetails.message = error.message;
-      }
-
-      // Try to extract API response details (safely handle BigInt)
-      if (error?.error) {
-        errorDetails.apiError = typeof error.error === 'string' ? error.error : safeExtract(error.error);
-        errorMessage = typeof error.error === 'string' ? error.error : String(error.error);
-      }
-      if (error?.reason) {
-        errorDetails.reason = typeof error.reason === 'string' ? error.reason : safeExtract(error.reason);
-        errorMessage = typeof error.reason === 'string' ? error.reason : String(error.reason);
-      }
-      if (error?.response) {
-        try {
-          if (typeof error.response === 'string') {
-            errorDetails.response = error.response;
-          } else {
-            errorDetails.response = safeStringify(safeExtract(error.response));
-          }
-        } catch (e) {
-          errorDetails.response = String(error.response);
-        }
-      }
-      if (error?.data) {
-        errorDetails.data = typeof error.data === 'string' ? error.data : safeStringify(safeExtract(error.data));
-      }
-      if (error?.status) errorDetails.status = error.status;
-      if (error?.statusText) errorDetails.statusText = error.statusText;
-
-      // Try to extract response body if it exists
-      let responseBody = null;
-      if (error?.response?.data) {
-        responseBody = typeof error.response.data === 'string' ? error.response.data : safeExtract(error.response.data);
-      } else if (error?.data) {
-        responseBody = typeof error.data === 'string' ? error.data : safeExtract(error.data);
-      }
-
-      // Extract error details from response body for user-friendly messages
-      let userFriendlyMessage = errorMessage;
-      if (responseBody && typeof responseBody === 'object') {
-        if (responseBody.reason === 'NotEnoughFunds') {
-          const expected = responseBody.reason_data?.expected;
-          const expectedStx = expected ? (parseInt(expected, 16) / 1_000_000).toFixed(6) : '0.005';
-          userFriendlyMessage = `Insufficient STX balance. You need at least ${expectedStx} STX to pay for the transaction fee. Please fund your account with STX and try again.`;
-        } else if (responseBody.reason) {
-          userFriendlyMessage = `Transaction rejected: ${responseBody.reason}${responseBody.error ? ' - ' + responseBody.error : ''}`;
-        } else if (responseBody.error) {
-          userFriendlyMessage = responseBody.error;
-        }
-      }
-
-      // Log the full error for debugging (using safe extraction)
-      const safeErrorDetails = safeExtract(errorDetails);
-      console.error('Transaction broadcast error:', safeErrorDetails);
-
-      // Provide detailed error message
-      const detailedMessage = userFriendlyMessage || (typeof responseBody === 'string' ? responseBody : (errorDetails.response || errorDetails.reason || errorDetails.apiError || errorDetails.data || errorMessage));
-      throw new Error(detailedMessage);
+      return await this.broadcastContractCall({
+        contractAddress: registryAddr,
+        contractName: registryName,
+        functionName: 'register-kyc',
+        functionArgs: [
+          bufferCV(commitmentBuffer),
+          bufferCV(signatureBuffer),
+          uintCV(params.attesterId),
+        ],
+        privateKey,
+        fee: options?.fee,
+      });
+    } catch (error) {
+      throw this.wrapError(error);
     }
   }
 
   /**
-   * Check if a user has valid KYC
-   * @param userPrincipal User's Stacks principal
-   * @returns KYC status
+   * Check if a user has a KYC record
    */
-  async hasKYC(userPrincipal: string): Promise<KYCStatus> {
+  async hasKYC(userPrincipal: string): Promise<boolean> {
     const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
-
     try {
       const result = await callReadOnlyFunction({
         contractAddress: address,
@@ -224,129 +96,20 @@ export class KYCContract {
         functionName: 'has-kyc?',
         functionArgs: [principalCV(userPrincipal)],
         network: this.network,
-        senderAddress: address, // Use contract address as sender for read-only calls
-      });
-
-      const jsonResult = cvToJSON(result);
-
-      // Result is (ok bool), cvToJSON returns:
-      // { type: '(response bool UnknownType)', value: { type: 'bool', value: true }, success: true }
-      // Check success field or response type, then extract boolean from value.value
-      if (jsonResult.success === true || (jsonResult.type && jsonResult.type.includes('response'))) {
-        // Extract the boolean value from the nested structure
-        const boolValue = jsonResult.value?.value;
-        const hasKYC = boolValue === true;
-        return { hasKYC };
-      } else {
-        return { hasKYC: false };
-      }
-    } catch (error) {
-      console.error('Error checking KYC status:', error);
-      return { hasKYC: false };
-    }
-  }
-
-  /**
-   * Get revocation root from the revocation registry contract
-   * @returns Revocation root (32-byte hex string) or null if contract not configured
-   */
-  async getRevocationRoot(): Promise<string | null> {
-    if (!this.config.revocationRegistryAddress) {
-      return null;
-    }
-
-    const { address, name } = this.parseContractAddress(this.config.revocationRegistryAddress);
-
-    try {
-      const result = await callReadOnlyFunction({
-        contractAddress: address,
-        contractName: name,
-        functionName: 'get-revocation-root',
-        functionArgs: [],
-        network: this.network,
         senderAddress: address,
       });
-
-      const jsonResult = cvToJSON(result);
-
-      // Result is (ok (buff 32))
-      if (jsonResult.success === true || (jsonResult.type && jsonResult.type.includes('response'))) {
-        const rootValue = jsonResult.value?.value;
-        if (rootValue) {
-          // Convert buffer to hex string
-          return rootValue.startsWith('0x') ? rootValue : `0x${rootValue}`;
-        }
-      }
-      return null;
+      const json = cvToJSON(result);
+      return json.value?.value === true || json.value === true;
     } catch (error) {
-      console.error('Error fetching revocation root:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Check if a commitment is revoked by querying the attester service
-   * @param commitment Commitment to check (hex string)
-   * @returns true if revoked, false if not revoked or if revocation checking is unavailable
-   */
-  async isCommitmentRevoked(commitment: string): Promise<boolean> {
-    // If no attester service URL configured, skip revocation check
-    if (!this.config.attesterServiceUrl) {
       return false;
     }
-
-    try {
-      // Query attester service for revocation status
-      const url = `${this.config.attesterServiceUrl}/revocation/check?commitment=${encodeURIComponent(commitment)}`;
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        // If service unavailable, assume not revoked (fail open)
-        console.warn('Revocation check service unavailable, assuming not revoked');
-        return false;
-      }
-
-      const data = await response.json() as { revoked?: boolean; commitment?: string };
-      return data.revoked === true;
-    } catch (error) {
-      // On error, assume not revoked (fail open)
-      console.error('Error checking revocation status:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Check if KYC is valid
-   * Now includes revocation checking
-   * @param userPrincipal User's Stacks principal
-   * @returns true if KYC is valid (exists and not revoked)
-   */
-  async isKYCValid(userPrincipal: string): Promise<boolean> {
-    // First check if user has KYC record
-    const kycDetails = await this.getKYC(userPrincipal);
-
-    if (!kycDetails || !kycDetails.hasKYC || !kycDetails.commitment) {
-      return false;
-    }
-
-    // Check revocation status
-    const isRevoked = await this.isCommitmentRevoked(kycDetails.commitment);
-
-    if (isRevoked) {
-      return false;
-    }
-
-    return true;
   }
 
   /**
    * Get KYC details for a user
-   * @param userPrincipal User's Stacks principal
-   * @returns KYC details or null
    */
   async getKYC(userPrincipal: string): Promise<KYCStatus | null> {
     const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
-
     try {
       const result = await callReadOnlyFunction({
         contractAddress: address,
@@ -357,30 +120,25 @@ export class KYCContract {
         senderAddress: address,
       });
 
-      const jsonResult = cvToJSON(result);
-
-      // Result is (ok (some kyc-record)) or (ok none)
-      // cvToJSON returns structure: { success: true, type: "...", value: { type: "(optional ...)", value: { type: "(tuple ...)", value: { ... } } } }
-      if (jsonResult.success === true && jsonResult.value?.value?.value) {
-        const record = jsonResult.value.value.value;
-        const result: KYCStatus = {
+      const json = cvToJSON(result);
+      if (json.success === true && json.value?.value?.value) {
+        const record = json.value.value.value;
+        const status: KYCStatus = {
           hasKYC: true,
           commitment: record.commitment?.value,
           attesterId: record['attester-id']?.value,
           registeredAt: record['registered-at']?.value,
         };
 
-        // Add history fields if present
         if (record['previous-commitment']?.value) {
-          result.previousCommitment = record['previous-commitment'].value;
+          status.previousCommitment = record['previous-commitment'].value;
         }
         if (record['previous-registered-at']?.value !== undefined) {
-          result.previousRegisteredAt = record['previous-registered-at'].value;
+          status.previousRegisteredAt = record['previous-registered-at'].value;
         }
-        return result;
-      } else {
-        return null;
+        return status;
       }
+      return null;
     } catch (error) {
       console.error('Error getting KYC details:', error);
       return null;
@@ -388,23 +146,37 @@ export class KYCContract {
   }
 
   /**
-   * Revoke KYC for a user
-   * Can be called by contract owner or the issuing attester
+   * Check if KYC is valid (exists and not revoked)
    */
-  async revokeKYC(userPrincipal: string, privateKey: string): Promise<string> {
-    const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
+  async isKYCValid(userPrincipal: string): Promise<boolean> {
+    const details = await this.getKYC(userPrincipal);
+    if (!details || !details.commitment) return false;
 
-    return this.broadcastContractCall({
-      contractAddress: address,
-      contractName: name,
-      functionName: 'revoke-kyc',
-      functionArgs: [principalCV(userPrincipal)],
-      privateKey,
-    });
+    // Check revocation
+    const isRevoked = await this.isCommitmentRevoked(details.commitment);
+    return !isRevoked;
   }
 
   /**
-   * Get contract owner for a specific registry
+   * Revoke KYC (Admin or issuing attester)
+   */
+  async revokeKYC(userPrincipal: string, privateKey: string): Promise<string> {
+    const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
+    try {
+      return await this.broadcastContractCall({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'revoke-kyc',
+        functionArgs: [principalCV(userPrincipal)],
+        privateKey,
+      });
+    } catch (error) {
+      throw this.wrapError(error);
+    }
+  }
+
+  /**
+   * Get contract owner
    */
   async getContractOwner(registry: 'kyc' | 'attester' | 'revocation'): Promise<string> {
     const registryAddr = registry === 'kyc' ? this.config.kycRegistryAddress :
@@ -421,130 +193,96 @@ export class KYCContract {
       senderAddress: address,
     });
 
-    const jsonResult = cvToJSON(result);
-    return (jsonResult.value?.value || jsonResult.value) as string;
+    const json = cvToJSON(result);
+    return (json.value?.value || json.value) as string;
   }
 
   /**
-   * Transfer ownership of a registry contract
+   * Transfer ownership
    */
   async transferOwnership(registry: 'kyc' | 'attester', newOwner: string, privateKey: string): Promise<string> {
     const registryAddr = registry === 'kyc' ? this.config.kycRegistryAddress : this.config.attesterRegistryAddress;
     const { address, name } = this.parseContractAddress(registryAddr);
 
-    return this.broadcastContractCall({
-      contractAddress: address,
-      contractName: name,
-      functionName: 'transfer-ownership',
-      functionArgs: [principalCV(newOwner)],
-      privateKey,
-    });
+    try {
+      return await this.broadcastContractCall({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'transfer-ownership',
+        functionArgs: [principalCV(newOwner)],
+        privateKey,
+      });
+    } catch (error) {
+      throw this.wrapError(error);
+    }
   }
 
-  // --- ATTESTER REGISTRY METHODS ---
-
   /**
-   * Add a new attester (Admin only)
+   * Add attester
    */
   async addAttester(params: { pubkey: string, id: number, address: string }, privateKey: string): Promise<string> {
-    const { address: registryAddr, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
+    const { address, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
     const pubkeyBuffer = Buffer.from(params.pubkey.replace('0x', ''), 'hex');
 
-    return this.broadcastContractCall({
-      contractAddress: registryAddr,
-      contractName: name,
-      functionName: 'add-attester',
-      functionArgs: [
-        bufferCV(pubkeyBuffer),
-        uintCV(params.id),
-        principalCV(params.address),
-      ],
-      privateKey,
-    });
+    try {
+      return await this.broadcastContractCall({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'add-attester',
+        functionArgs: [
+          bufferCV(pubkeyBuffer),
+          uintCV(params.id),
+          principalCV(params.address),
+        ],
+        privateKey,
+      });
+    } catch (error) {
+      throw this.wrapError(error);
+    }
   }
 
   /**
-   * Deactivate an attester (Admin only)
+   * Deactivate attester
    */
   async deactivateAttester(id: number, privateKey: string): Promise<string> {
-    const { address: registryAddr, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
-    return this.broadcastContractCall({
-      contractAddress: registryAddr,
-      contractName: name,
-      functionName: 'deactivate-attester',
-      functionArgs: [uintCV(id)],
-      privateKey,
-    });
-  }
-
-  /**
-   * Update an attester's public key (Admin only)
-   */
-  async updateAttesterPubkey(id: number, newPubkey: string, privateKey: string): Promise<string> {
     const { address, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
-    const pubkeyBuffer = Buffer.from(newPubkey.replace('0x', ''), 'hex');
-
-    return this.broadcastContractCall({
-      contractAddress: address,
-      contractName: name,
-      functionName: 'update-attester-pubkey',
-      functionArgs: [bufferCV(pubkeyBuffer), uintCV(id)],
-      privateKey,
-    });
+    try {
+      return await this.broadcastContractCall({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'deactivate-attester',
+        functionArgs: [uintCV(id)],
+        privateKey,
+      });
+    } catch (error) {
+      throw this.wrapError(error);
+    }
   }
 
   /**
-   * Update an attester's address (Admin only)
-   */
-  async updateAttesterAddress(id: number, newAddress: string, privateKey: string): Promise<string> {
-    const { address, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
-
-    return this.broadcastContractCall({
-      contractAddress: address,
-      contractName: name,
-      functionName: 'update-attester-address',
-      functionArgs: [principalCV(newAddress), uintCV(id)],
-      privateKey,
-    });
-  }
-
-  /**
-   * Get attester details by ID
+   * Get attester details
    */
   async getAttester(id: number): Promise<AttesterRecord | null> {
     const { address, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
     try {
-      const result = await callReadOnlyFunction({
-        contractAddress: address,
-        contractName: name,
-        functionName: 'get-attester-pubkey', // We can derive other details or call specifically
-        functionArgs: [uintCV(id)],
-        network: this.network,
-        senderAddress: address,
+      const pubkeyResult = await callReadOnlyFunction({
+        contractAddress: address, contractName: name, functionName: 'get-attester-pubkey',
+        functionArgs: [uintCV(id)], network: this.network, senderAddress: address,
       });
-
-      const pubkeyJson = cvToJSON(result);
-      if (!pubkeyJson.success) return null;
-
       const addrResult = await callReadOnlyFunction({
-        contractAddress: address,
-        contractName: name,
-        functionName: 'get-attester-address',
-        functionArgs: [uintCV(id)],
-        network: this.network,
-        senderAddress: address,
+        contractAddress: address, contractName: name, functionName: 'get-attester-address',
+        functionArgs: [uintCV(id)], network: this.network, senderAddress: address,
+      });
+      const activeResult = await callReadOnlyFunction({
+        contractAddress: address, contractName: name, functionName: 'is-attester-active?',
+        functionArgs: [uintCV(id)], network: this.network, senderAddress: address,
       });
 
+      const pubkeyJson = cvToJSON(pubkeyResult);
       const addrJson = cvToJSON(addrResult);
-      const activeResult = await callReadOnlyFunction({
-        contractAddress: address,
-        contractName: name,
-        functionName: 'is-attester-active?',
-        functionArgs: [uintCV(id)],
-        network: this.network,
-        senderAddress: address,
-      });
       const activeJson = cvToJSON(activeResult);
+
+      if (!pubkeyJson.success) return null;
 
       return {
         id,
@@ -553,48 +291,53 @@ export class KYCContract {
         active: activeJson.value?.value === true || activeJson.value === true,
       };
     } catch (error) {
-      console.error('Error fetching attester details:', error);
       return null;
     }
   }
 
   /**
-   * Get all registered attester IDs
+   * Get all attester IDs
    */
   async getAllAttesters(): Promise<number[]> {
     const { address, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
-    const result = await callReadOnlyFunction({
-      contractAddress: address,
-      contractName: name,
-      functionName: 'get-attesters',
-      functionArgs: [],
-      network: this.network,
-      senderAddress: address,
-    });
-    const json = cvToJSON(result);
-    if (json.success && json.value?.value) {
-      return (json.value.value as any[]).map((item: any) => parseInt(item.value));
+    try {
+      const result = await callReadOnlyFunction({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'get-attesters',
+        functionArgs: [],
+        network: this.network,
+        senderAddress: address,
+      });
+      const json = cvToJSON(result);
+      if (json.success && json.value?.value) {
+        return (json.value.value as any[]).map((item: any) => parseInt(item.value));
+      }
+      return [];
+    } catch (error) {
+      return [];
     }
-    return [];
   }
 
-  // --- REVOCATION METHODS ---
-
   /**
-   * Update revocation Merkle root (Admin only)
+   * Update revocation root (Admin only)
    */
   async updateRevocationRoot(newRoot: string, privateKey: string): Promise<string> {
     if (!this.config.revocationRegistryAddress) throw new Error('Revocation registry not configured');
     const { address, name } = this.parseContractAddress(this.config.revocationRegistryAddress);
     const rootBuffer = Buffer.from(newRoot.replace('0x', ''), 'hex');
 
-    return this.broadcastContractCall({
-      contractAddress: address,
-      contractName: name,
-      functionName: 'update-revocation-root',
-      functionArgs: [bufferCV(rootBuffer)],
-      privateKey,
-    });
+    try {
+      return await this.broadcastContractCall({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'update-revocation-root',
+        functionArgs: [bufferCV(rootBuffer)],
+        privateKey,
+      });
+    } catch (error) {
+      throw this.wrapError(error);
+    }
   }
 
   /**
@@ -603,40 +346,86 @@ export class KYCContract {
   async getRevocationRootHeight(): Promise<number> {
     if (!this.config.revocationRegistryAddress) return 0;
     const { address, name } = this.parseContractAddress(this.config.revocationRegistryAddress);
-    const result = await callReadOnlyFunction({
-      contractAddress: address,
-      contractName: name,
-      functionName: 'get-revocation-root-height',
-      functionArgs: [],
-      network: this.network,
-      senderAddress: address,
-    });
-    const json = cvToJSON(result);
-    return parseInt(json.value?.value || '0');
+    try {
+      const result = await callReadOnlyFunction({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'get-revocation-root-height',
+        functionArgs: [],
+        network: this.network,
+        senderAddress: address,
+      });
+      const json = cvToJSON(result);
+      return parseInt(json.value?.value || '0');
+    } catch (error) {
+      return 0;
+    }
   }
 
   /**
-   * Check if a commitment is revoked on-chain (placeholder)
+   * Get revocation root
+   */
+  async getRevocationRoot(): Promise<string | null> {
+    if (!this.config.revocationRegistryAddress) return null;
+    const { address, name } = this.parseContractAddress(this.config.revocationRegistryAddress);
+    try {
+      const result = await callReadOnlyFunction({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'get-revocation-root',
+        functionArgs: [],
+        network: this.network,
+        senderAddress: address,
+      });
+      const json = cvToJSON(result);
+      return json.value?.value || json.value;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Check revocation status via attester service
+   */
+  async isCommitmentRevoked(commitment: string): Promise<boolean> {
+    if (!this.config.attesterServiceUrl) return false;
+    try {
+      const url = `${this.config.attesterServiceUrl}/revocation/check?commitment=${encodeURIComponent(commitment)}`;
+      const response = await fetch(url);
+      if (!response.ok) return false;
+      const data = await response.json() as { revoked?: boolean };
+      return data.revoked === true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Check if revoked on-chain (placeholder)
    */
   async isCommitmentRevokedOnChain(commitment: string): Promise<boolean> {
     if (!this.config.revocationRegistryAddress) return false;
     const { address, name } = this.parseContractAddress(this.config.revocationRegistryAddress);
     const commitmentBuffer = Buffer.from(commitment.replace('0x', ''), 'hex');
 
-    const result = await callReadOnlyFunction({
-      contractAddress: address,
-      contractName: name,
-      functionName: 'is-revoked?',
-      functionArgs: [bufferCV(commitmentBuffer)],
-      network: this.network,
-      senderAddress: address,
-    });
-    const json = cvToJSON(result);
-    return json.value?.value === true || json.value === true;
+    try {
+      const result = await callReadOnlyFunction({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'is-revoked?',
+        functionArgs: [bufferCV(commitmentBuffer)],
+        network: this.network,
+        senderAddress: address,
+      });
+      const json = cvToJSON(result);
+      return json.value?.value === true || json.value === true;
+    } catch (error) {
+      return false;
+    }
   }
 
   /**
-   * Private helper to broadcast contract calls
+   * Broadcast contract call helper
    */
   private async broadcastContractCall(params: {
     contractAddress: string,
@@ -659,20 +448,17 @@ export class KYCContract {
     };
 
     const transaction = await makeContractCall(txOptions);
-    const broadcastResponse = await broadcastTransaction(transaction, this.network);
+    const response = await broadcastTransaction(transaction, this.network);
 
-    if ('error' in broadcastResponse && broadcastResponse.error) {
-      throw new Error(`Broadcast failed: ${broadcastResponse.error}`);
+    if ('error' in response && response.error) {
+      throw new Error(`Broadcast failed: ${response.error}`);
     }
 
-    return broadcastResponse.txid;
+    return response.txid;
   }
 
   /**
-   * Wait for a transaction to be confirmed on-chain
-   * @param txId Transaction ID
-   * @param interval Polling interval in ms (default 10000)
-   * @param timeout Max timeout in ms (default 600000 - 10 minutes)
+   * Wait for confirmation
    */
   async waitForConfirmation(txId: string, interval = 10000, timeout = 600000): Promise<any> {
     const startTime = Date.now();
@@ -682,37 +468,26 @@ export class KYCContract {
       try {
         const response = await fetch(`${this.network.coreApiUrl}/extended/v1/tx/${cleanTxId}`);
         if (response.ok) {
-          const txData = await response.json() as any;
-          if (txData.tx_status === 'success') {
-            return txData;
-          }
-          if (txData.tx_status === 'abort_by_response' || txData.tx_status === 'abort_by_post_condition') {
-            throw new Error(`Transaction aborted: ${txData.error || 'Unknown error'}`);
+          const data = await response.json() as any;
+          if (data.tx_status === 'success') return data;
+          if (data.tx_status === 'abort_by_response' || data.tx_status === 'abort_by_post_condition') {
+            throw new Error(`Transaction aborted: ${data.error || 'Unknown error'}`);
           }
         }
       } catch (error: any) {
-        if (error.message && error.message.includes('Transaction aborted')) {
-          throw error;
-        }
-        // If 404 or network error, just continue polling
+        if (error.message?.includes('Transaction aborted')) throw error;
       }
-      await new Promise(resolve => setTimeout(resolve, interval));
+      await new Promise(r => setTimeout(r, interval));
     }
     throw new Error('Transaction confirmation timed out');
   }
 
   /**
-   * Parse contract address from contract identifier (e.g., "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.kyc-registry")
+   * Parse contract address
    */
   private parseContractAddress(contractId: string): { address: string; name: string } {
     const parts = contractId.split('.');
-    if (parts.length !== 2) {
-      throw new Error(`Invalid contract address format: ${contractId}. Expected format: ADDRESS.contract-name`);
-    }
-    return {
-      address: parts[0],
-      name: parts[1],
-    };
+    if (parts.length !== 2) throw new Error(`Invalid contract address: ${contractId}`);
+    return { address: parts[0], name: parts[1] };
   }
 }
-

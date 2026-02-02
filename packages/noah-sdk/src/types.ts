@@ -132,6 +132,7 @@ export interface SDKConfig {
   revocationRegistryAddress?: string;
   proverServiceUrl?: string;
   attesterServiceUrl?: string;
+  stacksApiUrl?: string;
   network?: 'mainnet' | 'testnet' | 'devnet';
 }
 
@@ -149,5 +150,37 @@ export interface ProtocolRequirements {
   min_age: number;
   allowed_jurisdictions: number[];
   require_accreditation: boolean;
+}
+
+/**
+ * Persistence layer for long-running jobs
+ */
+export interface StorageInterface {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<void>;
+  removeItem(key: string): Promise<void>;
+}
+
+/**
+ * Noah SDK Events
+ */
+export type NoahEvent =
+  | 'proof-started'
+  | 'proof-progress'
+  | 'proof-completed'
+  | 'attestation-received'
+  | 'tx-broadcasted'
+  | 'tx-confirmed'
+  | 'error';
+
+/**
+ * Unified KYC Lifecycle State
+ */
+export interface KYCLifecycleState {
+  currentStage: 'idle' | 'proving' | 'attesting' | 'registering' | 'completed' | 'failed';
+  jobId?: string;
+  txId?: string;
+  error?: string;
+  progress?: number;
 }
 

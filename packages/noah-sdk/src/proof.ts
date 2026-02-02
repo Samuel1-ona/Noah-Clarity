@@ -1,120 +1,169 @@
-/**
- * Proof generation and verification utilities
- */
-
-import { ProofRequest, ProofResponse, AttestationRequest, AttestationResponse, SDKConfig, ProtocolRequirements, JobStatusResponse, ProofResult, EdDSASignature, EdDSAPublicKey } from './types';
+import {
+  ProofRequest,
+  ProofResponse,
+  AttestationRequest,
+  AttestationResponse,
+  SDKConfig,
+  ProtocolRequirements,
+  JobStatusResponse,
+  ProofResult,
+  EdDSASignature,
+  EdDSAPublicKey,
+  StorageInterface
+} from './types';
 import { CIRCUIT_CONSTANTS } from './constants';
+import { ProverError, AttesterError } from './errors';
 
 export class ProofService {
-  private proverServiceUrl: string;
-  private attesterServiceUrl: string;
+  private config: SDKConfig;
+  private storage?: StorageInterface;
+  private readonly STORAGE_KEY = 'noah_current_job_id';
 
-  constructor(config: SDKConfig) {
-    this.proverServiceUrl = config.proverServiceUrl || 'http://localhost:8080';
-    this.attesterServiceUrl = config.attesterServiceUrl || 'http://localhost:8081';
+  constructor(config: SDKConfig, storage?: StorageInterface) {
+    this.config = config;
+    this.storage = storage;
   }
 
   /**
-   * Generate a ZK proof
-   * @param request Proof generation request
-   * @returns Proof response
+   * Prover service URL helper
+   */
+  private get proverUrl(): string {
+    return this.config.proverServiceUrl || 'http://localhost:8080';
+  }
+
+  /**
+   * Attester service URL helper
+   */
+  private get attesterUrl(): string {
+    return this.config.attesterServiceUrl || 'http://localhost:8081';
+  }
+
+  /**
+   * Submit raw ZK proof generation request
    */
   async generateProof(request: ProofRequest): Promise<ProofResponse> {
-    const response = await fetch(`${this.proverServiceUrl}/proof/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
+    const url = `${this.proverUrl}/proof/generate`;
 
-    if (!response.ok) {
-      let errorMessage = response.statusText;
-      try {
-        const errorData = await response.json();
-        errorMessage = (errorData as { error?: string }).error || errorMessage;
-      } catch {
-        // If response is not JSON, use statusText
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        let errorMessage = response.statusText;
+        try {
+          const errorData = await response.json();
+          errorMessage = (errorData as { error?: string }).error || errorMessage;
+        } catch {
+          // If response is not JSON, use statusText
+        }
+        throw new ProverError(`Proof submission failed: ${errorMessage}`);
       }
-      throw new Error(`Proof submission failed: ${errorMessage}`);
-    }
 
-    const data = await response.json();
-    return data as ProofResponse;
+      const result = await response.json() as ProofResponse;
+
+      // PERSIST: Save the job ID if storage is provided
+      if (result.success && result.job_id && this.storage) {
+        await this.storage.setItem(this.STORAGE_KEY, result.job_id);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error generating proof:', error);
+      throw error instanceof ProverError ? error : new ProverError('Failed to submit proof job', error);
+    }
   }
 
   /**
-   * Get the status of a proof generation job
-   * @param jobId Job ID
+   * Get the persisted job ID from storage (if any)
    */
-  async getJobStatus(jobId: string): Promise<JobStatusResponse> {
-    const response = await fetch(`${this.proverServiceUrl}/proof/status/${jobId}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch job status: ${response.statusText}`);
-    }
-    const data = await response.json();
-    return data as JobStatusResponse;
+  async getPersistedJobId(): Promise<string | null> {
+    if (!this.storage) return null;
+    return await this.storage.getItem(this.STORAGE_KEY);
   }
 
   /**
-   * Wait for proof generation to complete
-   * @param jobId Job ID
-   * @param interval Polling interval in ms (default 2000)
-   * @param timeout Max timeout in ms (default 60000)
+   * Clear persisted job
    */
-  async waitForProof(jobId: string, interval = 2000, timeout = 60000): Promise<ProofResult> {
+  async clearPersistedJob() {
+    if (this.storage) {
+      await this.storage.removeItem(this.STORAGE_KEY);
+    }
+  }
+
+  /**
+   * Poll for proof completion
+   */
+  async waitForProof(jobId: string, interval = 5000, timeout = 300000): Promise<ProofResult> {
     const startTime = Date.now();
+    const url = `${this.proverUrl}/proof/status/${jobId}`;
+
     while (Date.now() - startTime < timeout) {
-      const status = await this.getJobStatus(jobId);
-      if (status.status === 'completed' && status.result) {
-        return status.result;
+      try {
+        const response = await fetch(url);
+        if (response.ok) {
+          const status = await response.json() as JobStatusResponse;
+
+          if (status.status === 'completed' && status.result) {
+            await this.clearPersistedJob(); // Success -> Clear
+            return status.result;
+          }
+
+          if (status.status === 'failed') {
+            await this.clearPersistedJob(); // Failure -> Clear
+            throw new ProverError(`Proof generation failed: ${status.error || 'Unknown error'}`);
+          }
+        } else {
+          let errorMessage = response.statusText;
+          try {
+            const errorData = await response.json();
+            errorMessage = (errorData as { error?: string }).error || errorMessage;
+          } catch { }
+          console.warn(`Failed to fetch job status for ${jobId}: ${errorMessage}. Retrying...`);
+        }
+      } catch (error) {
+        if (error instanceof ProverError) throw error;
+        console.error(`Error during job status poll for ${jobId}:`, error);
       }
-      if (status.status === 'failed') {
-        throw new Error(`Proof generation failed: ${status.error}`);
-      }
+
       await new Promise(resolve => setTimeout(resolve, interval));
     }
-    throw new Error('Proof generation timed out');
+
+    throw new ProverError('Proof generation timed out');
   }
 
   /**
-   * Request an attestation signature from the attester
-   * @param request Attestation request
-   * @returns Attestation response
+   * Request an attestation signature
    */
   async requestAttestation(request: AttestationRequest): Promise<AttestationResponse> {
-    const response = await fetch(`${this.attesterServiceUrl}/credential/attest`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
+    const url = `${this.attesterUrl}/credential/attest`;
 
-    if (!response.ok) {
-      let errorMessage = response.statusText;
-      try {
-        const errorData = await response.json();
-        errorMessage = (errorData as { error?: string }).error || errorMessage;
-      } catch {
-        // If response is not JSON, use statusText
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        let errorMessage = response.statusText;
+        try {
+          const errorData = await response.json();
+          errorMessage = (errorData as { error?: string }).error || errorMessage;
+        } catch { }
+        throw new AttesterError(`Attestation failed: ${errorMessage}`);
       }
-      throw new Error(`Attestation failed: ${errorMessage}`);
-    }
 
-    const data = await response.json();
-    return data as AttestationResponse;
+      return await response.json() as AttestationResponse;
+    } catch (error) {
+      throw error instanceof AttesterError ? error : new AttesterError('Failed to request attestation', error);
+    }
   }
 
   /**
    * Generate a proof matching protocol-specific requirements
-   * 
-   * Takes user credential data and protocol requirements, then constructs
-   * a ProofRequest with protocol requirements as public inputs.
-   * 
-   * @param userCredential User's credential data (private inputs)
-   * @param protocolRequirements Protocol's KYC requirements (public inputs)
-   * @returns Proof response with proof and public inputs
    */
   async generateProofForProtocol(
     userCredential: {
@@ -129,16 +178,13 @@ export class ProofService {
     },
     protocolRequirements: ProtocolRequirements
   ): Promise<ProofResponse> {
-    // PAD JURISDICTIONS: Ensure exactly 10 slots are filled for the circuit
     const allowed = [...protocolRequirements.allowed_jurisdictions].map(j => j.toString());
     while (allowed.length < CIRCUIT_CONSTANTS.ALLOWED_JURISDICTIONS_COUNT) {
       allowed.push("0");
     }
     const finalAllowed = allowed.slice(0, CIRCUIT_CONSTANTS.ALLOWED_JURISDICTIONS_COUNT);
 
-    // Construct ProofRequest with protocol requirements as public inputs
     const proofRequest: ProofRequest = {
-      // Private inputs
       age: userCredential.age,
       jurisdiction: userCredential.jurisdiction,
       is_accredited: userCredential.is_accredited,
@@ -147,15 +193,12 @@ export class ProofService {
       signature: userCredential.signature,
       attester_pub_key: userCredential.attester_pub_key,
       user_address: userCredential.user_address,
-
-      // Public inputs
       min_age: protocolRequirements.min_age.toString(),
       allowed_jurisdictions: finalAllowed,
       require_accreditation: protocolRequirements.require_accreditation ? '1' : '0',
-      commitment: '', // Computed by prover service
+      commitment: '',
     };
 
-    // Submit proof job
     return await this.generateProof(proofRequest);
   }
 
@@ -165,16 +208,10 @@ export class ProofService {
   async verifyPublicInputs(result: ProofResult, expected: { minAge: number, requireAccreditation: boolean }): Promise<boolean> {
     const inputs = result.public_inputs;
 
-    // Check MinAge
-    if (inputs[CIRCUIT_CONSTANTS.PUBLIC_INPUTS.MIN_AGE] !== expected.minAge.toString()) {
-      return false;
-    }
+    if (inputs[CIRCUIT_CONSTANTS.PUBLIC_INPUTS.MIN_AGE] !== expected.minAge.toString()) return false;
 
-    // Check RequireAccreditation
     const expectedAcc = expected.requireAccreditation ? '1' : '0';
-    if (inputs[CIRCUIT_CONSTANTS.PUBLIC_INPUTS.REQUIRE_ACCREDITATION] !== expectedAcc) {
-      return false;
-    }
+    if (inputs[CIRCUIT_CONSTANTS.PUBLIC_INPUTS.REQUIRE_ACCREDITATION] !== expectedAcc) return false;
 
     return true;
   }
