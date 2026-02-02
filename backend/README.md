@@ -1,332 +1,65 @@
-# Noah-v2 Backend
+# Noah-v2 Backend: The Infrastructure of Trust
 
-Zero-knowledge proof-based KYC attestation system with privacy-preserving credential verification.
+Welcome to the engine room of Noah. This directory contains the two primary off-chain components that make our privacy-preserving KYC possible: the **Attester** and the **Prover**.
 
-## Architecture
-
-The backend consists of two microservices:
-
-### 1. **Prover Service** (`prover/`)
-Generates zero-knowledge proofs for KYC credentials using Groth16.
-
-**Responsibilities:**
-- Compile ZK circuits
-- Generate proofs from user credentials
-- Manage proving/verifying keys
-
-**Port:** `8080` (default)
-
-### 2. **Attester Service** (`attester/`)
-Verifies proofs and issues on-chain attestations.
-
-**Responsibilities:**
-- Verify ZK proofs
-- Sign commitments
-- Issue credentials
-- Manage revocations
-- Interact with Stacks blockchain
-
-**Port:** `8081` (default)
+Think of the Attester as the "Eyes and Ears" that verify real-world identities, while the Prover is the "Wall of Privacy" that translates those identities into zero-knowledge proofs.
 
 ---
 
-## Quick Start
+##  The Attester: Identity Verification
 
-### Prerequisites
-- Go 1.21+
-- Stacks blockchain access (testnet/mainnet)
+The Attester is the bridge between the physical world and the digital ZK world. Its job is to verify that a user is a real person without ever storing their sensitive data longer than necessary.
 
-### Installation
-
-```bash
-# Clone repository
-cd backend
-
-# Install dependencies
-cd attester && go mod download
-cd ../prover && go mod download
-```
-
-### Running Services
-
-#### Prover Service
-```bash
-cd prover
-go run .
-```
-
-#### Attester Service
-```bash
-cd attester
-export ATTESTER_PRIVATE_KEY="your-private-key"
-go run .
-```
+### How it works
+1. **OCR & Document Validation**: Using the `OCRService`, it extracts data from passports and IDs. It checks for validity, expiry, and consistency across documents.
+2. **Sybil Protection**: To prevent one person from registering multiple addresses, it generates a unique "Identity Fingerprint" (a hash of the document details). If the same document is used with a different address, the Attester blocks it unless the previous registration is revoked.
+3. **The Commitment Generator**: This is the "Secret Sauce." Instead of handing over your passport number to a smart contract, the Attester computes a **MiMC Commitment**:
+   `Commitment = MiMC(IdentityData + Nonce + UserAddress)`
+   This commitment is unique to the user and their wallet, but reveals nothing about the identity itself.
+4. **Attestation & Signing**: Once verified, the Attester signs the commitment using two keys:
+   - **EdDSA (BN254)**: Used by the Prover inside the ZK circuit.
+   - **ECDSA (secp256k1)**: Used by the Stacks blockchain to verify the attester's authenticity on-chain.
 
 ---
 
-## Configuration
+##  The Prover: Zero-Knowledge Generation
 
-Both services use environment variables:
+The Prover is where the magic happens. It takes the credential issued by the Attester and generates a **Groth16 ZK-Proof** that says: *"I have a valid credential that meets these specific requirements, but I won't tell you who I am."*
 
-### Prover
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PROVER_PORT` | `8080` | HTTP server port |
-| `CIRCUIT_PATH` | `./circuit` | Path to circuit files |
-| `PROVING_KEY_PATH` | `./keys/proving.key` | Proving key location |
-| `VERIFYING_KEY_PATH` | `./keys/verifying.key` | Verifying key location |
-| `LOG_LEVEL` | `info` | Logging level (debug/info/warn/error) |
-| `ENVIRONMENT` | `development` | Environment (development/production) |
+### The Core Constraints (What the Circuit Actually Checks)
+The Prover runs a series of mathematical checks (constraints) that must all pass for a proof to be valid:
 
-### Attester
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ATTESTER_PORT` | `8081` | HTTP server port |
-| `ATTESTER_PRIVATE_KEY` | *required* | Stacks private key |
-| `ATTESTER_ID` | `1` | Attester ID (auto-discovered if not set) |
-| `ATTESTER_REGISTRY` | `ST2N04...attester-registry` | Contract address |
-| `STACKS_NETWORK` | `testnet` | Stacks network (testnet/mainnet) |
-| `VERIFYING_KEY_PATH` | `../prover/keys/verifying.key` | Verifying key location |
-| `LOG_LEVEL` | `info` | Logging level |
-| `ENVIRONMENT` | `development` | Environment |
+1.  **Identity Integrity (The Anchor)**: 
+    - The circuit recomputes the MiMC hash from the user's private data and the public wallet address.
+    - It asserts that this recomputed hash **must match** the Commitment signed by the Attester. This prevents anyone from "stealing" a credential or using it with the wrong wallet.
+2.  **Attester Authenticity**:
+    - The circuit verifies the **EdDSA Signature** provided by the Attester.
+    - It ensures the signature was created by a known, trusted Attester's public key.
+3.  **Age Verification**:
+    - `Assert(User.Age >= Requirement.MinAge)`
+    - This is a simple range check, but it's done entirely within the ZK-envelope. The contract only sees "True," never the actual age.
+4.  **Jurisdiction Check (Merkle Optimized)**:
+    - Instead of a slow linear scan, we use a **Merkle Tree of Jurisdictions**.
+    - The circuit receives a Merkle Proof and verifies that the user's `JurisdictionID` is a valid leaf in the `JurisdictionRoot` provided by the protocol. This supports thousands of countries with zero overhead.
+5.  **Accreditation Logic**:
+    - If a protocol requires accreditation, the circuit enforces `IsAccredited == 1`. 
+    - If the protocol doesn't require it, this check is skipped.
 
 ---
 
-## API Endpoints
+##  Operational Workflow
 
-### Prover Service
-
-#### Generate Proof
-```http
-POST /proof/generate
-Content-Type: application/json
-
-{
-  "age": "25",
-  "jurisdiction": "1",
-  "is_accredited": "1",
-  "identity_data": "12345",
-  "nonce": "67890",
-  "min_age": "18",
-  "jurisdiction_root": "0x...",
-  "require_accreditation": "0",
-  "merkle_path": [...],
-  "merkle_helper": [...]
-}
-```
-
-**Response:**
-```json
-{
-  "proof": "base64-encoded-proof",
-  "public_inputs": ["0x...", "0x...", "0x...", "0x..."],
-  "commitment": "0x...",
-  "success": true
-}
-```
-
-#### Health Check
-```http
-GET /health
-```
-
-#### Metrics
-```http
-GET /metrics
-```
-
-### Attester Service
-
-#### Create Attestation
-```http
-POST /attest
-Content-Type: application/json
-
-{
-  "commitment": "0x...",
-  "proof": "base64-encoded-proof",
-  "public_inputs": ["0x...", "0x...", "0x...", "0x..."]
-}
-```
-
-**Response:**
-```json
-{
-  "commitment": "0x...",
-  "signature": "0x...",
-  "attester_id": 1,
-  "expiry": 1234567890,
-  "success": true
-}
-```
-
-#### Revoke Credential
-```http
-POST /revoke
-Content-Type: application/json
-
-{
-  "commitment": "0x...",
-  "reason": "User requested"
-}
-```
-
-#### Get Revocation Root
-```http
-GET /revocation/root
-```
-
-#### Health Check
-```http
-GET /health
-```
-
-#### Metrics
-```http
-GET /metrics
-```
+1.  **Issuance**: User sends OCR data to Attester -> Attester verifies and returns a **Signed Credential**.
+2.  **Job Submission**: User sends the Credential + Protocol Requirements to the Prover.
+3.  **Proof Generation**: The Prover takes ~5-15 seconds to generate a Groth16 proof (depending on CPU).
+4.  **Attestation**: The user takes the completed Proof back to the Attester to get a final "On-chain Attestation" (This bit is the final green light for the smart contract).
+5.  **Registration**: The user submits the Proof + Attestation to the `kyc-registry` contract on Stacks.
 
 ---
 
-## Monitoring
+##  Technical Requirements
 
-### Prometheus Metrics
-
-Both services expose Prometheus metrics at `/metrics`:
-
-**HTTP Metrics:**
-- `http_requests_total` - Total HTTP requests
-- `http_request_duration_seconds` - Request latency
-- `http_requests_in_flight` - Active requests
-
-**Proof Metrics:**
-- `proof_generation_total` - Proof generation attempts
-- `proof_generation_duration_seconds` - Proof generation time
-- `proof_verification_total` - Proof verification attempts
-- `proof_verification_duration_seconds` - Proof verification time
-
-**Circuit Metrics:**
-- `circuit_initialized` - Circuit initialization status
-
-### Health Checks
-
-- `/health` - Detailed health status with component checks
-- `/health/ready` - Readiness probe (Kubernetes)
-- `/health/live` - Liveness probe (Kubernetes)
-
----
-
-## Development
-
-### Running Tests
-```bash
-# Attester tests
-cd attester
-go test -v ./...
-
-# Prover tests
-cd prover
-go test -v ./...
-```
-
-### Building
-```bash
-# Build attester
-cd attester
-go build -o attester
-
-# Build prover
-cd prover
-go build -o prover
-```
-
-### Docker (Coming Soon)
-```bash
-docker-compose up
-```
-
----
-
-## Security
-
-### Rate Limiting
-- Per-IP rate limiting: 100 requests/minute
-- Configurable via middleware
-
-### Input Validation
-- Request size limit: 10MB
-- Content-Type validation
-- JSON schema validation
-
-### Security Headers
-- X-Content-Type-Options: nosniff
-- X-Frame-Options: DENY
-- X-XSS-Protection: enabled
-- Content-Security-Policy: default-src 'self'
-
-### Secret Management
-- Private keys via environment variables
-- Support for external secret managers (planned)
-
----
-
-## Architecture Decisions
-
-### Why Microservices?
-- **Separation of Concerns**: Proof generation and attestation are distinct responsibilities
-- **Scalability**: Services can scale independently
-- **Security**: Prover doesn't need blockchain access
-
-### Why Groth16?
-- **Small Proofs**: ~200 bytes
-- **Fast Verification**: ~2ms
-- **Widely Adopted**: Battle-tested in production
-
-### Why Merkle Proofs for Jurisdictions?
-- **Scalability**: O(log n) vs O(n) constraints
-- **Flexibility**: Supports unlimited jurisdictions
-- **Efficiency**: 98.4% reduction in public inputs (258 → 4)
-
----
-
-## Troubleshooting
-
-### Prover fails to start
-- Check that circuit files exist
-- Verify proving/verifying keys are present
-- Run `go mod download` to ensure dependencies
-
-### Attester can't connect to blockchain
-- Verify `STACKS_NETWORK` is correct
-- Check `ATTESTER_REGISTRY` contract address
-- Ensure network connectivity to Hiro API
-
-### Proof verification fails
-- Ensure prover and attester use same verifying key
-- Check that circuit compilation matches
-- Verify public inputs format
-
----
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
----
-
-## License
-
-[Add your license here]
-
----
-
-## Support
-
-For issues and questions:
-- GitHub Issues: [link]
-- Documentation: [link]
-- Discord: [link]
+- **Curve**: BN254 (for compatibility with gnark and Ethereum/Stacks ZK precompiles).
+- **Proving System**: Groth16.
+- **Hash Function**: MiMC-7 (optimized for ZK constraints).
+- **Tree Depth**: 20 (supporting up to 1,048,576 allowed jurisdictions per root).
