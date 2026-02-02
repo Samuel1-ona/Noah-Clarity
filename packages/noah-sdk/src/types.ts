@@ -34,6 +34,18 @@ export interface KYCStatus {
   previousRegisteredAt?: number;
 }
 
+export interface AttesterRecord {
+  id: number;
+  pubkey: string;
+  address: string;
+  active: boolean;
+}
+
+export interface RevocationStats {
+  root: string;
+  height: number;
+}
+
 export interface RegisterKYCParams {
   commitment: string;
   signature: string;

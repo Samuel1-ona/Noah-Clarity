@@ -15,7 +15,7 @@ import {
   callReadOnlyFunction,
 } from '@stacks/transactions';
 import { StacksNetwork, StacksTestnet, StacksMainnet } from '@stacks/network';
-import { SDKConfig, KYCStatus, RegisterKYCParams } from './types';
+import { SDKConfig, KYCStatus, RegisterKYCParams, AttesterRecord, RevocationStats } from './types';
 
 export class KYCContract {
   private config: SDKConfig;
@@ -377,7 +377,6 @@ export class KYCContract {
         if (record['previous-registered-at']?.value !== undefined) {
           result.previousRegisteredAt = record['previous-registered-at'].value;
         }
-
         return result;
       } else {
         return null;
@@ -386,6 +385,287 @@ export class KYCContract {
       console.error('Error getting KYC details:', error);
       return null;
     }
+  }
+
+  /**
+   * Revoke KYC for a user
+   * Can be called by contract owner or the issuing attester
+   */
+  async revokeKYC(userPrincipal: string, privateKey: string): Promise<string> {
+    const { address, name } = this.parseContractAddress(this.config.kycRegistryAddress);
+
+    return this.broadcastContractCall({
+      contractAddress: address,
+      contractName: name,
+      functionName: 'revoke-kyc',
+      functionArgs: [principalCV(userPrincipal)],
+      privateKey,
+    });
+  }
+
+  /**
+   * Get contract owner for a specific registry
+   */
+  async getContractOwner(registry: 'kyc' | 'attester' | 'revocation'): Promise<string> {
+    const registryAddr = registry === 'kyc' ? this.config.kycRegistryAddress :
+      registry === 'attester' ? this.config.attesterRegistryAddress :
+        this.config.revocationRegistryAddress!;
+    const { address, name } = this.parseContractAddress(registryAddr);
+
+    const result = await callReadOnlyFunction({
+      contractAddress: address,
+      contractName: name,
+      functionName: 'get-contract-owner',
+      functionArgs: [],
+      network: this.network,
+      senderAddress: address,
+    });
+
+    const jsonResult = cvToJSON(result);
+    return (jsonResult.value?.value || jsonResult.value) as string;
+  }
+
+  /**
+   * Transfer ownership of a registry contract
+   */
+  async transferOwnership(registry: 'kyc' | 'attester', newOwner: string, privateKey: string): Promise<string> {
+    const registryAddr = registry === 'kyc' ? this.config.kycRegistryAddress : this.config.attesterRegistryAddress;
+    const { address, name } = this.parseContractAddress(registryAddr);
+
+    return this.broadcastContractCall({
+      contractAddress: address,
+      contractName: name,
+      functionName: 'transfer-ownership',
+      functionArgs: [principalCV(newOwner)],
+      privateKey,
+    });
+  }
+
+  // --- ATTESTER REGISTRY METHODS ---
+
+  /**
+   * Add a new attester (Admin only)
+   */
+  async addAttester(params: { pubkey: string, id: number, address: string }, privateKey: string): Promise<string> {
+    const { address: registryAddr, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
+    const pubkeyBuffer = Buffer.from(params.pubkey.replace('0x', ''), 'hex');
+
+    return this.broadcastContractCall({
+      contractAddress: registryAddr,
+      contractName: name,
+      functionName: 'add-attester',
+      functionArgs: [
+        bufferCV(pubkeyBuffer),
+        uintCV(params.id),
+        principalCV(params.address),
+      ],
+      privateKey,
+    });
+  }
+
+  /**
+   * Deactivate an attester (Admin only)
+   */
+  async deactivateAttester(id: number, privateKey: string): Promise<string> {
+    const { address: registryAddr, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
+    return this.broadcastContractCall({
+      contractAddress: registryAddr,
+      contractName: name,
+      functionName: 'deactivate-attester',
+      functionArgs: [uintCV(id)],
+      privateKey,
+    });
+  }
+
+  /**
+   * Update an attester's public key (Admin only)
+   */
+  async updateAttesterPubkey(id: number, newPubkey: string, privateKey: string): Promise<string> {
+    const { address, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
+    const pubkeyBuffer = Buffer.from(newPubkey.replace('0x', ''), 'hex');
+
+    return this.broadcastContractCall({
+      contractAddress: address,
+      contractName: name,
+      functionName: 'update-attester-pubkey',
+      functionArgs: [bufferCV(pubkeyBuffer), uintCV(id)],
+      privateKey,
+    });
+  }
+
+  /**
+   * Update an attester's address (Admin only)
+   */
+  async updateAttesterAddress(id: number, newAddress: string, privateKey: string): Promise<string> {
+    const { address, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
+
+    return this.broadcastContractCall({
+      contractAddress: address,
+      contractName: name,
+      functionName: 'update-attester-address',
+      functionArgs: [principalCV(newAddress), uintCV(id)],
+      privateKey,
+    });
+  }
+
+  /**
+   * Get attester details by ID
+   */
+  async getAttester(id: number): Promise<AttesterRecord | null> {
+    const { address, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
+    try {
+      const result = await callReadOnlyFunction({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'get-attester-pubkey', // We can derive other details or call specifically
+        functionArgs: [uintCV(id)],
+        network: this.network,
+        senderAddress: address,
+      });
+
+      const pubkeyJson = cvToJSON(result);
+      if (!pubkeyJson.success) return null;
+
+      const addrResult = await callReadOnlyFunction({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'get-attester-address',
+        functionArgs: [uintCV(id)],
+        network: this.network,
+        senderAddress: address,
+      });
+
+      const addrJson = cvToJSON(addrResult);
+      const activeResult = await callReadOnlyFunction({
+        contractAddress: address,
+        contractName: name,
+        functionName: 'is-attester-active?',
+        functionArgs: [uintCV(id)],
+        network: this.network,
+        senderAddress: address,
+      });
+      const activeJson = cvToJSON(activeResult);
+
+      return {
+        id,
+        pubkey: pubkeyJson.value?.value || pubkeyJson.value,
+        address: addrJson.value?.value || addrJson.value,
+        active: activeJson.value?.value === true || activeJson.value === true,
+      };
+    } catch (error) {
+      console.error('Error fetching attester details:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get all registered attester IDs
+   */
+  async getAllAttesters(): Promise<number[]> {
+    const { address, name } = this.parseContractAddress(this.config.attesterRegistryAddress);
+    const result = await callReadOnlyFunction({
+      contractAddress: address,
+      contractName: name,
+      functionName: 'get-attesters',
+      functionArgs: [],
+      network: this.network,
+      senderAddress: address,
+    });
+    const json = cvToJSON(result);
+    if (json.success && json.value?.value) {
+      return (json.value.value as any[]).map((item: any) => parseInt(item.value));
+    }
+    return [];
+  }
+
+  // --- REVOCATION METHODS ---
+
+  /**
+   * Update revocation Merkle root (Admin only)
+   */
+  async updateRevocationRoot(newRoot: string, privateKey: string): Promise<string> {
+    if (!this.config.revocationRegistryAddress) throw new Error('Revocation registry not configured');
+    const { address, name } = this.parseContractAddress(this.config.revocationRegistryAddress);
+    const rootBuffer = Buffer.from(newRoot.replace('0x', ''), 'hex');
+
+    return this.broadcastContractCall({
+      contractAddress: address,
+      contractName: name,
+      functionName: 'update-revocation-root',
+      functionArgs: [bufferCV(rootBuffer)],
+      privateKey,
+    });
+  }
+
+  /**
+   * Get revocation root height
+   */
+  async getRevocationRootHeight(): Promise<number> {
+    if (!this.config.revocationRegistryAddress) return 0;
+    const { address, name } = this.parseContractAddress(this.config.revocationRegistryAddress);
+    const result = await callReadOnlyFunction({
+      contractAddress: address,
+      contractName: name,
+      functionName: 'get-revocation-root-height',
+      functionArgs: [],
+      network: this.network,
+      senderAddress: address,
+    });
+    const json = cvToJSON(result);
+    return parseInt(json.value?.value || '0');
+  }
+
+  /**
+   * Check if a commitment is revoked on-chain (placeholder)
+   */
+  async isCommitmentRevokedOnChain(commitment: string): Promise<boolean> {
+    if (!this.config.revocationRegistryAddress) return false;
+    const { address, name } = this.parseContractAddress(this.config.revocationRegistryAddress);
+    const commitmentBuffer = Buffer.from(commitment.replace('0x', ''), 'hex');
+
+    const result = await callReadOnlyFunction({
+      contractAddress: address,
+      contractName: name,
+      functionName: 'is-revoked?',
+      functionArgs: [bufferCV(commitmentBuffer)],
+      network: this.network,
+      senderAddress: address,
+    });
+    const json = cvToJSON(result);
+    return json.value?.value === true || json.value === true;
+  }
+
+  /**
+   * Private helper to broadcast contract calls
+   */
+  private async broadcastContractCall(params: {
+    contractAddress: string,
+    contractName: string,
+    functionName: string,
+    functionArgs: any[],
+    privateKey: string,
+    fee?: number
+  }): Promise<string> {
+    const txOptions = {
+      contractAddress: params.contractAddress,
+      contractName: params.contractName,
+      functionName: params.functionName,
+      functionArgs: params.functionArgs,
+      senderKey: params.privateKey,
+      fee: params.fee || 5000,
+      network: this.network,
+      anchorMode: AnchorMode.Any,
+      postConditionMode: PostConditionMode.Allow,
+    };
+
+    const transaction = await makeContractCall(txOptions);
+    const broadcastResponse = await broadcastTransaction(transaction, this.network);
+
+    if ('error' in broadcastResponse && broadcastResponse.error) {
+      throw new Error(`Broadcast failed: ${broadcastResponse.error}`);
+    }
+
+    return broadcastResponse.txid;
   }
 
   /**
