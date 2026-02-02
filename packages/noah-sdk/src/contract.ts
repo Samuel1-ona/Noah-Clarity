@@ -45,7 +45,12 @@ export class KYCContract {
    */
   async registerKYC(
     params: RegisterKYCParams,
-    privateKey: string
+    privateKey: string,
+    options?: {
+      postConditionMode?: PostConditionMode;
+      postConditions?: any[];
+      fee?: number;
+    }
   ): Promise<string> {
     const senderAddress = getAddressFromPrivateKey(privateKey, this.network.version);
 
@@ -77,10 +82,11 @@ export class KYCContract {
       functionName: 'register-kyc',
       functionArgs,
       senderKey: privateKey,
-      fee: 5000, // Increased from 1000 to 5000 microSTX (0.005 STX) for better reliability
+      fee: options?.fee || 5000, // microSTX
       network: this.network,
       anchorMode: AnchorMode.Any,
-      postConditionMode: PostConditionMode.Allow,
+      postConditionMode: options?.postConditionMode || PostConditionMode.Allow,
+      postConditions: options?.postConditions || [],
     };
 
     try {
