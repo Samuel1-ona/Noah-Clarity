@@ -172,6 +172,7 @@ export type NoahEvent =
   | 'attestation-received'
   | 'tx-broadcasted'
   | 'tx-confirmed'
+  | 'state-changed'
   | 'error';
 
 /**

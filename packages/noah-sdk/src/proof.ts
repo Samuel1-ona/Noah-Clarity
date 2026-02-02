@@ -137,6 +137,9 @@ export class ProofService {
       }
 
       const backoff = Math.min(interval * Math.pow(1.5, retryCount), 30000);
+      if (retryCount > 0) {
+        console.warn(`Waiting ${Math.round(backoff / 1000)}s before retry ${retryCount}...`);
+      }
       await new Promise(resolve => setTimeout(resolve, backoff));
     }
 

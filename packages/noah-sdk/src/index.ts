@@ -11,6 +11,7 @@ export { BrowserStorage } from './storage';
 export { BlindingManager } from './blinding';
 export * from './mimc';
 export * from './types';
+export * from './errors';
 
 import { KYCContract } from './contract';
 import { ProofService } from './proof';
@@ -82,6 +83,15 @@ export class NoahSDK {
 
   private updateState(patch: Partial<KYCLifecycleState>) {
     this.state = { ...this.state, ...patch };
+    this.emit('state-changed', this.state);
+  }
+
+  /**
+   * Reset current SDK state
+   */
+  public resetState() {
+    this.state = { currentStage: 'idle' };
+    this.emit('state-changed', this.state);
   }
 
   /**
