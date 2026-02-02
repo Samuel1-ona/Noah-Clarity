@@ -100,6 +100,9 @@ export class ProofService {
     const startTime = Date.now();
     const url = `${this.proverUrl}/proof/status/${jobId}`;
 
+    let retryCount = 0;
+    const maxRetries = 10;
+
     while (Date.now() - startTime < timeout) {
       try {
         const response = await fetch(url);
@@ -107,28 +110,34 @@ export class ProofService {
           const status = await response.json() as JobStatusResponse;
 
           if (status.status === 'completed' && status.result) {
-            await this.clearPersistedJob(); // Success -> Clear
+            await this.clearPersistedJob();
             return status.result;
           }
 
           if (status.status === 'failed') {
-            await this.clearPersistedJob(); // Failure -> Clear
+            await this.clearPersistedJob();
             throw new ProverError(`Proof generation failed: ${status.error || 'Unknown error'}`);
           }
+
+          retryCount = 0; // Reset on successful status fetch
         } else {
-          let errorMessage = response.statusText;
-          try {
-            const errorData = await response.json();
-            errorMessage = (errorData as { error?: string }).error || errorMessage;
-          } catch { }
-          console.warn(`Failed to fetch job status for ${jobId}: ${errorMessage}. Retrying...`);
+          retryCount++;
+          if (retryCount > maxRetries) {
+            throw new ProverError(`Max retries reached while fetching job status: ${response.statusText}`);
+          }
+          console.warn(`Attempt ${retryCount}: Failed to fetch job status for ${jobId}. Retrying...`);
         }
       } catch (error) {
         if (error instanceof ProverError) throw error;
-        console.error(`Error during job status poll for ${jobId}:`, error);
+        retryCount++;
+        if (retryCount > maxRetries) {
+          throw new ProverError('Max retries reached during job status polling', error);
+        }
+        console.error(`Attempt ${retryCount}: Error during job status poll:`, error);
       }
 
-      await new Promise(resolve => setTimeout(resolve, interval));
+      const backoff = Math.min(interval * Math.pow(1.5, retryCount), 30000);
+      await new Promise(resolve => setTimeout(resolve, backoff));
     }
 
     throw new ProverError('Proof generation timed out');

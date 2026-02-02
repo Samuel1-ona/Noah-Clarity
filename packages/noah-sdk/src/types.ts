@@ -134,6 +134,7 @@ export interface SDKConfig {
   attesterServiceUrl?: string;
   stacksApiUrl?: string;
   network?: 'mainnet' | 'testnet' | 'devnet';
+  storage?: StorageInterface;
 }
 
 export interface WalletConfig {

@@ -119,8 +119,12 @@ export const MIMC_BN254_CONSTANTS = [
 ];
 
 /**
- * MiMC Permutation (x^5)
+ * MiMC-7 Permutation (x^5)
  */
+export function mimc7(m: bigint, k: bigint): bigint {
+    return mimcPermute(m, k);
+}
+
 function mimcPermute(m: bigint, k: bigint): bigint {
     let h = k;
     for (let i = 0; i < MIMC_BN254_CONSTANTS.length; i++) {

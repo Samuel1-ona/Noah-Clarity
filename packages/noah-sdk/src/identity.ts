@@ -34,11 +34,32 @@ export class IdentityService {
     }
 
     /**
+     * Internal helper to fetch with retry logic
+     */
+    private async fetchWithRetry(url: string, options: RequestInit, retries = 3, backoff = 1000): Promise<Response> {
+        try {
+            const response = await fetch(url, options);
+            if (response.ok) return response;
+            if (retries > 0 && response.status >= 500) {
+                await new Promise(r => setTimeout(r, backoff));
+                return this.fetchWithRetry(url, options, retries - 1, backoff * 2);
+            }
+            return response;
+        } catch (error) {
+            if (retries > 0) {
+                await new Promise(r => setTimeout(r, backoff));
+                return this.fetchWithRetry(url, options, retries - 1, backoff * 2);
+            }
+            throw error;
+        }
+    }
+
+    /**
      * Issue a new credential
      * @param request Credential issuance request
      */
     async issueCredential(request: CredentialRequest): Promise<CredentialResponse> {
-        const response = await fetch(`${this.attesterServiceUrl}/credential/issue`, {
+        const response = await this.fetchWithRetry(`${this.attesterServiceUrl}/credential/issue`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -58,7 +79,7 @@ export class IdentityService {
      * Get attester ID and public key
      */
     async getAttesterInfo(): Promise<AttesterInfo> {
-        const response = await fetch(`${this.attesterServiceUrl}/info`);
+        const response = await this.fetchWithRetry(`${this.attesterServiceUrl}/info`, { method: 'GET' });
         if (!response.ok) {
             throw new Error(`Failed to fetch attester info: ${response.statusText}`);
         }

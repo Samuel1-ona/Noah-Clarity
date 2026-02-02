@@ -7,6 +7,8 @@ export { KYCContract } from './contract';
 export { ProofService } from './proof';
 export { IdentityService } from './identity';
 export { WalletHelper } from './wallet';
+export { BrowserStorage } from './storage';
+export { BlindingManager } from './blinding';
 export * from './mimc';
 export * from './types';
 
@@ -14,6 +16,8 @@ import { KYCContract } from './contract';
 import { ProofService } from './proof';
 import { IdentityService } from './identity';
 import { WalletHelper } from './wallet';
+import { BrowserStorage } from './storage';
+import { BlindingManager } from './blinding';
 import { computeCommitment } from './mimc';
 import { getAddressFromPrivateKey } from '@stacks/transactions';
 import {
@@ -35,14 +39,21 @@ export class NoahSDK {
   public identity: IdentityService;
   public wallet: WalletHelper;
 
+  public blinding: BlindingManager;
+
   private listeners: Record<string, Function[]> = {};
   private state: KYCLifecycleState = { currentStage: 'idle' };
 
   constructor(config: SDKConfig, walletConfig: WalletConfig) {
-    this.contract = new KYCContract(config);
-    this.proof = new ProofService(config);
-    this.identity = new IdentityService(config);
+    // Default to BrowserStorage if not explicitly provided
+    const storage = config.storage || new BrowserStorage();
+    const updatedConfig = { ...config, storage };
+
+    this.contract = new KYCContract(updatedConfig);
+    this.proof = new ProofService(updatedConfig);
+    this.identity = new IdentityService(updatedConfig);
     this.wallet = new WalletHelper(walletConfig);
+    this.blinding = new BlindingManager(storage);
   }
 
   /**
