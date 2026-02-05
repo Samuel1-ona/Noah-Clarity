@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Box,
   Card,
-  CardContent,
   Button,
   TextField,
   Typography,
@@ -144,17 +143,28 @@ export const AttesterManagement: React.FC = () => {
 
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto', mt: 4, mb: 4 }}>
-      <Card>
-        <CardContent>
-          <Typography variant="h5" gutterBottom>
+      <Card
+        elevation={0}
+        sx={{
+          borderRadius: 6,
+          background: 'rgba(255, 255, 255, 0.8)',
+          backdropFilter: 'blur(20px)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.08)',
+          border: '1px solid',
+          borderColor: 'divider',
+          overflow: 'hidden'
+        }}
+      >
+        <Box sx={{ p: { xs: 3, md: 5 } }}>
+          <Typography variant="h5" gutterBottom sx={{ fontWeight: 800, color: 'primary.main' }}>
             Attester Management
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
             Register attesters on-chain. Only the contract owner can register new attesters.
             The attester must provide their compressed secp256k1 public key (33 bytes, 66 hex characters).
           </Typography>
 
-          <Divider sx={{ my: 3 }} />
+          <Divider sx={{ mb: 4 }} />
 
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -226,37 +236,57 @@ export const AttesterManagement: React.FC = () => {
               <Button
                 variant="contained"
                 fullWidth
+                size="large"
                 onClick={handleRegisterAttester}
                 disabled={loading || !attesterId || !publicKey}
-                sx={{ mt: 2 }}
+                sx={{
+                  mt: 3,
+                  py: 1.5,
+                  borderRadius: 3,
+                  background: 'linear-gradient(90deg, #6366F1 0%, #4F46E5 100%)',
+                  '&:hover': {
+                    background: 'linear-gradient(90deg, #4F46E5 0%, #4338CA 100%)',
+                  }
+                }}
               >
                 {loading ? (
                   <>
-                    <CircularProgress size={20} sx={{ mr: 1 }} />
+                    <CircularProgress size={20} color="inherit" sx={{ mr: 1 }} />
                     Registering Attester...
                   </>
                 ) : (
-                  'Register Attester'
+                  'Register Attester on Blockchain'
                 )}
               </Button>
             </Grid>
           </Grid>
 
-          <Paper sx={{ mt: 4, p: 2, bgcolor: 'background.default' }}>
-            <Typography variant="subtitle2" gutterBottom>
-              Instructions:
+          <Paper
+            elevation={0}
+            sx={{
+              mt: 5,
+              p: 3,
+              bgcolor: 'rgba(15, 23, 42, 0.02)',
+              borderRadius: 4,
+              border: '1px solid',
+              borderColor: 'rgba(15, 23, 42, 0.05)'
+            }}
+          >
+            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center' }}>
+              <Box component="span" sx={{ p: 0.5, bgcolor: 'primary.main', borderRadius: 1, mr: 1 }} />
+              Registration Instructions
             </Typography>
-            <Typography variant="body2" component="div">
-              <ol>
-                <li>Get the public key from your attester service (check backend logs when the service starts)</li>
-                <li>Enter the attester ID (typically 1 for the first attester)</li>
-                <li>Enter the public key (66 hex characters, 0x prefix optional)</li>
-                <li>Click "Register Attester" and approve the transaction in your wallet</li>
-                <li>Wait for the transaction to confirm (you must be the contract owner)</li>
+            <Typography variant="body2" component="div" color="text.secondary" sx={{ mt: 1 }}>
+              <ol style={{ paddingLeft: 20, margin: 0 }}>
+                <li>Get the public key from your attester service (check backend logs).</li>
+                <li>Enter the attester ID (typically 1 for the first attester).</li>
+                <li>Enter the public key (66 hex characters, 0x prefix optional).</li>
+                <li>Click "Register Attester" and approve the transaction.</li>
+                <li>Wait for confirmation (must be contract owner).</li>
               </ol>
             </Typography>
           </Paper>
-        </CardContent>
+        </Box>
       </Card>
     </Box>
   );

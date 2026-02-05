@@ -12,22 +12,66 @@ const theme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#1976d2',
+      main: '#0F172A', // Slate 900
+      light: '#334155', // Slate 700
+      dark: '#020617', // Slate 950
     },
     secondary: {
-      main: '#dc004e',
+      main: '#6366F1', // Indigo 500
+    },
+    background: {
+      default: '#F8FAFC', // Slate 50
+      paper: '#FFFFFF',
+    },
+    text: {
+      primary: '#0F172A',
+      secondary: '#64748B',
     },
   },
   typography: {
-    fontFamily: [
-      '-apple-system',
-      'BlinkMacSystemFont',
-      '"Segoe UI"',
-      'Roboto',
-      '"Helvetica Neue"',
-      'Arial',
-      'sans-serif',
-    ].join(','),
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    h4: {
+      fontWeight: 800,
+      letterSpacing: '-0.02em',
+    },
+    h5: {
+      fontWeight: 700,
+      letterSpacing: '-0.01em',
+    },
+    h6: {
+      fontWeight: 600,
+    },
+    subtitle1: {
+      fontWeight: 600,
+    },
+    button: {
+      textTransform: 'none',
+      fontWeight: 600,
+    },
+  },
+  shape: {
+    borderRadius: 12,
+  },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          padding: '10px 24px',
+          boxShadow: 'none',
+          '&:hover': {
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          },
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          border: '1px solid #E2E8F0',
+        },
+      },
+    },
   },
 });
 
@@ -68,9 +112,9 @@ function App() {
             )}
             {session && (
               <>
-              <Typography variant="body2" sx={{ mr: 2 }}>
-                {userAddress?.substring(0, 6)}...{userAddress?.substring(userAddress.length - 4)}
-              </Typography>
+                <Typography variant="body2" sx={{ mr: 2 }}>
+                  {userAddress?.substring(0, 6)}...{userAddress?.substring(userAddress.length - 4)}
+                </Typography>
                 <Button
                   color="inherit"
                   onClick={disconnectWallet}
@@ -97,22 +141,22 @@ function App() {
 
           <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 4 }}>
             <Tabs value={activeTab} onChange={handleTabChange} aria-label="navigation tabs" centered>
-              <Tab 
-                icon={<VerifiedUserIcon />} 
+              <Tab
+                icon={<VerifiedUserIcon />}
                 iconPosition="start"
-                label="KYC Registration" 
+                label="KYC Registration"
                 sx={{ minHeight: 72, textTransform: 'none', fontSize: '1rem' }}
               />
-              <Tab 
-                icon={<AccountBalanceIcon />} 
+              <Tab
+                icon={<AccountBalanceIcon />}
                 iconPosition="start"
-                label="Secure Vault" 
+                label="Secure Vault"
                 sx={{ minHeight: 72, textTransform: 'none', fontSize: '1rem' }}
               />
-              <Tab 
-                icon={<PersonAddIcon />} 
+              <Tab
+                icon={<PersonAddIcon />}
                 iconPosition="start"
-                label="Attester Management" 
+                label="Attester Management"
                 sx={{ minHeight: 72, textTransform: 'none', fontSize: '1rem' }}
               />
             </Tabs>

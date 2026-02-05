@@ -332,12 +332,23 @@ export const Vault: React.FC = () => {
           </Alert>
         )}
 
-        <Paper elevation={0} sx={{ p: 3, mb: 3, bgcolor: 'primary.50', border: '1px solid', borderColor: 'primary.200' }}>
-          <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-            Your Balance
+        <Paper
+          elevation={0}
+          sx={{
+            p: 4,
+            mb: 4,
+            textAlign: 'center',
+            background: 'linear-gradient(135deg, #0F172A 0%, #334155 100%)',
+            color: 'white',
+            borderRadius: 5,
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ opacity: 0.8, mb: 1, fontWeight: 600 }}>
+            Available Assets
           </Typography>
-          <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-            {formatBalance(vaultState.balance)} STX
+          <Typography variant="h3" sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>
+            {formatBalance(vaultState.balance)} <Box component="span" sx={{ fontSize: '1.5rem', opacity: 0.7 }}>STX</Box>
           </Typography>
         </Paper>
 
@@ -365,13 +376,19 @@ export const Vault: React.FC = () => {
               <Button
                 fullWidth
                 variant="contained"
-                color="success"
                 onClick={handleDeposit}
                 disabled={vaultState.depositing || !depositAmount}
-                sx={{ mt: 2 }}
-                startIcon={vaultState.depositing ? <CircularProgress size={20} /> : <ArrowUpwardIcon />}
+                sx={{
+                  mt: 3,
+                  py: 1.5,
+                  background: 'linear-gradient(90deg, #6366F1 0%, #4F46E5 100%)',
+                  '&:hover': {
+                    background: 'linear-gradient(90deg, #4F46E5 0%, #4338CA 100%)',
+                  }
+                }}
+                startIcon={vaultState.depositing ? <CircularProgress size={20} color="inherit" /> : <ArrowUpwardIcon />}
               >
-                {vaultState.depositing ? 'Depositing...' : 'Deposit'}
+                {vaultState.depositing ? 'Processing...' : 'Deposit Assets'}
               </Button>
             </Paper>
           </Grid>
@@ -396,14 +413,14 @@ export const Vault: React.FC = () => {
               />
               <Button
                 fullWidth
-                variant="contained"
-                color="error"
+                variant="outlined"
+                color="primary"
                 onClick={handleWithdraw}
                 disabled={vaultState.withdrawing || !withdrawAmount}
-                sx={{ mt: 2 }}
+                sx={{ mt: 3, py: 1.5, borderRadius: 3, borderWidth: 2, '&:hover': { borderWidth: 2 } }}
                 startIcon={vaultState.withdrawing ? <CircularProgress size={20} /> : <ArrowDownwardIcon />}
               >
-                {vaultState.withdrawing ? 'Withdrawing...' : 'Withdraw'}
+                {vaultState.withdrawing ? 'Processing...' : 'Withdraw to Wallet'}
               </Button>
             </Paper>
           </Grid>

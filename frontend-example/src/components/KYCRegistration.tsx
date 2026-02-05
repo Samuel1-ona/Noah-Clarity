@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Box,
   Card,
-  CardContent,
   Stepper,
   Step,
   StepLabel,
@@ -15,7 +14,7 @@ import {
   CircularProgress,
   Paper,
   Chip,
-  Divider,
+  Fade,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -225,45 +224,66 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
               We verify you meet the requirements without seeing your actual data.
             </Typography>
 
-            <Paper elevation={0} sx={{ p: 2, mb: 3, bgcolor: 'primary.50', border: '1px solid', borderColor: 'primary.200' }}>
-              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 3,
+                mb: 4,
+                bgcolor: 'rgba(99, 102, 241, 0.04)',
+                border: '1px solid',
+                borderColor: 'rgba(99, 102, 241, 0.1)',
+                borderRadius: 4,
+              }}
+            >
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700, mb: 2 }}>
                 Verified Identity Information
               </Typography>
               {documentInfo && (
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    <b>Document No:</b> {documentInfo.number}
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Document No:</Box>
+                    <Box component="span">{documentInfo.number}</Box>
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    <b>Country:</b> {documentInfo.country}
+                  <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Country:</Box>
+                    <Box component="span">{documentInfo.country}</Box>
                   </Typography>
                   {documentInfo.age > 0 && (
-                    <Typography variant="body2" color="text.secondary">
-                      <b>Verified Age:</b> {documentInfo.age}
+                    <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Box component="span" sx={{ fontWeight: 600 }}>Verified Age:</Box>
+                      <Box component="span">{documentInfo.age}</Box>
                     </Typography>
                   )}
                 </Box>
               )}
 
-              {/* Only show requirements if they exist/are strict */}
               {(protocolRequirements.allowed_jurisdictions.length > 0 || protocolRequirements.min_age > 10) && (
                 <>
-                  <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt: 1 }}>
+                  <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700, mt: 2, mb: 1 }}>
                     Protocol Requirements
                   </Typography>
-                  <Box sx={{ mt: 1 }}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                     {protocolRequirements.min_age > 0 && (
-                      <Chip size="small" label={`Minimum Age: ${protocolRequirements.min_age}+`} sx={{ mr: 1, mb: 1 }} />
+                      <Chip
+                        size="small"
+                        label={`Age: ${protocolRequirements.min_age}+`}
+                        sx={{ fontWeight: 600, bgcolor: 'white', border: '1px solid', borderColor: 'divider' }}
+                      />
                     )}
                     {protocolRequirements.allowed_jurisdictions.length > 0 && (
                       <Chip
                         size="small"
                         label={`Jurisdictions: ${protocolRequirements.allowed_jurisdictions.map(j => JURISDICTION_NAMES[j] || j).join(', ')}`}
-                        sx={{ mr: 1, mb: 1 }}
+                        sx={{ fontWeight: 600, bgcolor: 'white', border: '1px solid', borderColor: 'divider' }}
                       />
                     )}
                     {protocolRequirements.require_accreditation && (
-                      <Chip size="small" label="Accredited Investor Required" color="warning" />
+                      <Chip
+                        size="small"
+                        label="Accredited Required"
+                        color="warning"
+                        sx={{ fontWeight: 700 }}
+                      />
                     )}
                   </Box>
                 </>
@@ -390,18 +410,50 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
   };
 
   return (
-    <Card sx={{ maxWidth: 800, mx: 'auto' }}>
-      <CardContent>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
-            KYC Registration
+    <Card
+      elevation={0}
+      sx={{
+        maxWidth: 800,
+        mx: 'auto',
+        borderRadius: 6,
+        overflow: 'hidden',
+        background: 'rgba(255, 255, 255, 0.8)',
+        backdropFilter: 'blur(20px)',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.08)',
+      }}
+    >
+      <Box sx={{ p: { xs: 3, md: 5 } }}>
+        <Box sx={{ mb: 5, textAlign: 'center' }}>
+          <Typography variant="h5" gutterBottom sx={{ fontWeight: 800, color: 'primary.main' }}>
+            KYC Verification
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Complete your Know Your Customer verification to access protocols
+            Secure, private, and powered by zero-knowledge proofs.
           </Typography>
         </Box>
 
-        <Stepper activeStep={currentStepIndex} alternativeLabel sx={{ mb: 4 }}>
+        <Stepper
+          activeStep={currentStepIndex}
+          alternativeLabel
+          sx={{
+            mb: 5,
+            '& .MuiStepLabel-label': {
+              fontWeight: 600,
+              fontSize: '0.75rem',
+              color: 'text.secondary',
+            },
+            '& .MuiStepLabel-label.Mui-active': {
+              color: 'primary.main',
+              fontWeight: 700,
+            },
+            '& .MuiStepIcon-root.Mui-active': {
+              color: 'secondary.main',
+            },
+            '& .MuiStepIcon-root.Mui-completed': {
+              color: 'success.main',
+            }
+          }}
+        >
           {steps.map((step) => (
             <Step key={step.id}>
               <StepLabel>{step.label}</StepLabel>
@@ -409,22 +461,35 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
           ))}
         </Stepper>
 
-        <Divider sx={{ mb: 3 }} />
-
         {error && (
-          <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
-            {error}
-          </Alert>
+          <Fade in={!!error}>
+            <Alert
+              severity="error"
+              variant="filled"
+              sx={{ mb: 4, borderRadius: 3 }}
+              onClose={() => setError(null)}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>{error}</Typography>
+            </Alert>
+          </Fade>
         )}
 
-        {success && !error && (
-          <Alert severity="success" sx={{ mb: 3 }}>
-            {success}
-          </Alert>
+        {success && !error && activeStep !== 'complete' && (
+          <Fade in={!!success}>
+            <Alert
+              severity="success"
+              variant="outlined"
+              sx={{ mb: 4, borderRadius: 3, bgcolor: 'rgba(74, 222, 128, 0.05)', borderColor: 'success.light' }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>{success}</Typography>
+            </Alert>
+          </Fade>
         )}
 
-        {renderStepContent()}
-      </CardContent>
+        <Box sx={{ minHeight: 400 }}>
+          {renderStepContent()}
+        </Box>
+      </Box>
     </Card>
   );
 };
