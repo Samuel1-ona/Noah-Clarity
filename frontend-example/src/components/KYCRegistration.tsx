@@ -45,7 +45,14 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
   const [age, setAge] = useState('');
   const [jurisdiction, setJurisdiction] = useState('1');
   const [isAccredited, setIsAccredited] = useState(false);
-  const [documentInfo, setDocumentInfo] = useState<{ number: string; country: string } | null>(null);
+  const [documentInfo, setDocumentInfo] = useState<{
+    type: string;
+    number: string;
+    country: string;
+    date_of_birth: string;
+    expiry_date: string;
+    age: number;
+  } | null>(null);
 
   // Fetch protocol requirements
   useEffect(() => {
@@ -99,7 +106,9 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
       return;
     }
 
-    if (!protocolRequirements.allowed_jurisdictions.includes(parseInt(jurisdiction))) {
+    // Only check jurisdiction if there is a restrictive list
+    if (protocolRequirements.allowed_jurisdictions.length > 0 &&
+      !protocolRequirements.allowed_jurisdictions.includes(parseInt(jurisdiction))) {
       setError(`Your jurisdiction is not allowed for this protocol`);
       return;
     }
@@ -141,10 +150,13 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
       setSuccess('Registering your KYC on the blockchain...');
 
       // Complete KYC registration flow (uses wallet extension, no private key needed)
+      if (!documentInfo) throw new Error('Document info is missing');
+
       const txId = await registerKYCWithProtocol(
         userAddress,
         userCredential,
-        protocolRequirements
+        protocolRequirements,
+        documentInfo
       );
 
       setActiveStep('complete');
@@ -170,12 +182,26 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
         return (
           <DocumentUpload
             onVerified={(data) => {
-              setDocumentInfo(data);
+              setDocumentInfo({
+                type: 'Passport',
+                ...data
+              });
               setSuccess('Passport verified successfully! We have pre-filled some information for you.');
-              // Pre-fill jurisdiction if country is found (very simple mapping)
+
+              // Auto-populate age
+              if (data.age) {
+                setAge(data.age.toString());
+              }
+
+              // Pre-fill jurisdiction if country is found
+              // Now we map NGA -> 6, etc.
               if (data.country === 'USA') setJurisdiction('1');
               else if (data.country === 'GBR') setJurisdiction('2');
               else if (data.country === 'CAN') setJurisdiction('3');
+              else if (data.country === 'NGA') {
+                // Even if requirements are empty, we want to select the correct ID
+                setJurisdiction('6');
+              }
 
               setActiveStep('info');
             }}
@@ -183,6 +209,12 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
         );
 
       case 'info':
+        // Determine available jurisdictions to show
+        // If allowed list is empty, show all known jurisdictions
+        const availableJurisdictions = protocolRequirements.allowed_jurisdictions.length > 0
+          ? protocolRequirements.allowed_jurisdictions
+          : Object.keys(JURISDICTION_NAMES).map(k => parseInt(k));
+
         return (
           <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
             <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
@@ -198,24 +230,44 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
                 Verified Identity Information
               </Typography>
               {documentInfo && (
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  Passport No: {documentInfo.number} | Country: {documentInfo.country}
-                </Typography>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">
+                    <b>Document No:</b> {documentInfo.number}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    <b>Country:</b> {documentInfo.country}
+                  </Typography>
+                  {documentInfo.age > 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      <b>Verified Age:</b> {documentInfo.age}
+                    </Typography>
+                  )}
+                </Box>
               )}
-              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt: 1 }}>
-                Protocol Requirements
-              </Typography>
-              <Box sx={{ mt: 1 }}>
-                <Chip size="small" label={`Minimum Age: ${protocolRequirements.min_age}+`} sx={{ mr: 1, mb: 1 }} />
-                <Chip
-                  size="small"
-                  label={`Jurisdictions: ${protocolRequirements.allowed_jurisdictions.map(j => JURISDICTION_NAMES[j] || j).join(', ')}`}
-                  sx={{ mr: 1, mb: 1 }}
-                />
-                {protocolRequirements.require_accreditation && (
-                  <Chip size="small" label="Accredited Investor Required" color="warning" />
-                )}
-              </Box>
+
+              {/* Only show requirements if they exist/are strict */}
+              {(protocolRequirements.allowed_jurisdictions.length > 0 || protocolRequirements.min_age > 10) && (
+                <>
+                  <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt: 1 }}>
+                    Protocol Requirements
+                  </Typography>
+                  <Box sx={{ mt: 1 }}>
+                    {protocolRequirements.min_age > 0 && (
+                      <Chip size="small" label={`Minimum Age: ${protocolRequirements.min_age}+`} sx={{ mr: 1, mb: 1 }} />
+                    )}
+                    {protocolRequirements.allowed_jurisdictions.length > 0 && (
+                      <Chip
+                        size="small"
+                        label={`Jurisdictions: ${protocolRequirements.allowed_jurisdictions.map(j => JURISDICTION_NAMES[j] || j).join(', ')}`}
+                        sx={{ mr: 1, mb: 1 }}
+                      />
+                    )}
+                    {protocolRequirements.require_accreditation && (
+                      <Chip size="small" label="Accredited Investor Required" color="warning" />
+                    )}
+                  </Box>
+                </>
+              )}
             </Paper>
 
             <TextField
@@ -226,7 +278,7 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
               onChange={(e) => setAge(e.target.value)}
               required
               margin="normal"
-              helperText={`Must be at least ${protocolRequirements.min_age} years old`}
+              helperText={protocolRequirements.min_age > 0 ? `Must be at least ${protocolRequirements.min_age} years old` : ''}
             />
 
             <TextField
@@ -242,7 +294,7 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
                 native: true,
               }}
             >
-              {protocolRequirements.allowed_jurisdictions.map((j: number) => (
+              {availableJurisdictions.map((j: number) => (
                 <option key={j} value={j.toString()}>
                   {JURISDICTION_NAMES[j] || `Jurisdiction ${j}`}
                 </option>

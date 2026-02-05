@@ -24,6 +24,8 @@ const WALLET_CONFIG = {
 // Initialize SDK instance
 export const sdk = new NoahSDK(SDK_CONFIG, WALLET_CONFIG);
 
+import { addressToNumeric } from './identity';
+
 /**
  * Check KYC status for a user
  */
@@ -79,7 +81,16 @@ export async function requestCredential(
     is_accredited: string;
     identity_data: string;
     nonce: string;
-  }
+  },
+  documentInfo: {
+    type: string;
+    number: string;
+    country: string;
+    date_of_birth: string;
+    expiry_date: string;
+    age: number;
+  },
+  commitmentAddress?: string // Optional: Use this address for commitment generation (e.g. numeric format)
 ): Promise<{ success: boolean; credential?: any; error?: string }> {
   try {
     const response = await fetch(`${SDK_CONFIG.attesterServiceUrl}/credential/issue`, {
@@ -87,7 +98,7 @@ export async function requestCredential(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_id: userAddress,
-        user_address: userAddress,
+        user_address: commitmentAddress || userAddress, // Use numeric address if provided
         identity_data: userCredential.identity_data,
         nonce: userCredential.nonce,
         attributes: {
@@ -95,16 +106,21 @@ export async function requestCredential(
           jurisdiction: parseInt(userCredential.jurisdiction),
           is_accredited: userCredential.is_accredited === '1',
         },
-        documents: [], // In a full flow, we'd attach OCR results here if needed for server validation
+        documents: [documentInfo],
       }),
     });
 
-    return await response.json();
+    const data = await response.json();
+    if (!response.ok) {
+      return { success: false, error: data.error || 'Failed to issue credential' };
+    }
+
+    return { success: true, credential: data.credential };
   } catch (error: any) {
-    console.error('Credential request failed:', error);
+    console.error('Credential issuance failed:', error);
     return {
       success: false,
-      error: error.message || 'Failed to request credential',
+      error: error.message || 'Failed to connect to attester service',
     };
   }
 }
@@ -123,23 +139,38 @@ export async function registerKYCWithProtocol(
     identity_data: string;
     nonce: string;
   },
-  protocolRequirements: ProtocolRequirements
+  protocolRequirements: ProtocolRequirements,
+  documentInfo: {
+    type: string;
+    number: string;
+    country: string;
+    date_of_birth: string;
+    expiry_date: string;
+    age: number;
+  }
 ): Promise<string> {
   // Step 1: Get signed credential from attester (EdDSA)
-  const credentialResponse = await requestCredential(userAddress, userCredential);
+  // Convert user address to numeric format (BigInt string) to match ZK circuit commitment logic
+  const userAddressNumeric = addressToNumeric(userAddress);
+
+  // We pass the numeric address as the 4th argument so the Attester uses it for commitment generation
+  const credentialResponse = await requestCredential(userAddress, userCredential, documentInfo, userAddressNumeric);
   if (!credentialResponse.success || !credentialResponse.credential) {
     throw new Error(credentialResponse.error || 'Failed to get credential from attester');
   }
 
-  const { eddsa_signature, attester_public_key } = credentialResponse.credential;
+  const { eddsa_signature, attester_public_key, commitment } = credentialResponse.credential;
 
   // Step 2: Generate proof matching protocol requirements (Submit Job)
+  // userAddressNumeric is already defined above
+
   const proofJobResponse = await sdk.proof.generateProofForProtocol(
     {
       ...userCredential,
       signature: eddsa_signature,
       attester_pub_key: attester_public_key,
-      user_address: userAddress,
+      user_address: userAddressNumeric,
+      commitment: commitment,
     },
     protocolRequirements
   );

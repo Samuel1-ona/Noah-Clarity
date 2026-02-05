@@ -22,8 +22,8 @@ import type { ProtocolRequirements } from 'noah-clarity';
  * Cons: Requires code deployment to update
  */
 export const VAULT_PROTOCOL_REQUIREMENTS: ProtocolRequirements = {
-  min_age: 18,
-  allowed_jurisdictions: [1, 2, 3], // US (1), EU (2), UK (3)
+  min_age: 0,
+  allowed_jurisdictions: [], // Empty list implies no specific restriction in our new permissive mode
   require_accreditation: false,
 };
 
@@ -60,7 +60,7 @@ export async function getProtocolRequirements(protocolName: string): Promise<Pro
       // Default requirements (fallback)
       return {
         min_age: 18,
-        allowed_jurisdictions: [1, 2, 3],
+        allowed_jurisdictions: [1, 2, 3, 6],
         require_accreditation: false,
       };
   }
@@ -114,4 +114,5 @@ export const JURISDICTION_NAMES: Record<number, string> = {
   3: 'United Kingdom',
   4: 'Canada',
   5: 'Australia',
+  6: 'Nigeria',
 };
