@@ -6,7 +6,6 @@ import {
   Step,
   StepLabel,
   Button,
-  TextField,
   FormControlLabel,
   Checkbox,
   Typography,
@@ -15,13 +14,14 @@ import {
   Paper,
   Chip,
   Fade,
+  Divider,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { getUserAddress } from '../lib/stacks';
 import { getProtocolRequirements, JURISDICTION_NAMES } from '../config/protocolRequirements';
-import { registerKYCWithProtocol } from '../lib/kyc';
+import { registerKYCWithProtocol, isKYCValid } from '../lib/kyc';
 import { addressToNumeric, generateNumericNonce } from '../lib/identity';
 import { DocumentUpload } from './DocumentUpload';
 import type { ProtocolRequirements } from 'noah-clarity';
@@ -33,7 +33,6 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [requirementsLoading, setRequirementsLoading] = useState(true);
   const [protocolRequirements, setProtocolRequirements] = useState<ProtocolRequirements>({
     min_age: 18,
     allowed_jurisdictions: [1, 2, 3],
@@ -47,7 +46,11 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
   const [documentInfo, setDocumentInfo] = useState<{
     type: string;
     number: string;
-    country: string;
+    country: string; // Issuing Country
+    surname?: string;
+    given_name?: string;
+    nationality?: string;
+    nin?: string;
     date_of_birth: string;
     expiry_date: string;
     age: number;
@@ -64,11 +67,26 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
         }
       } catch (err) {
         console.error('Failed to fetch requirements:', err);
-      } finally {
-        setRequirementsLoading(false);
       }
     };
+
+    const checkExistingKYC = async () => {
+      const userAddress = getUserAddress();
+      if (userAddress) {
+        try {
+          const isValid = await isKYCValid(userAddress);
+          if (isValid) {
+            setActiveStep('complete');
+            setSuccess('You have already completed KYC verification.');
+          }
+        } catch (e) {
+          console.error("Error checking KYC status", e);
+        }
+      }
+    };
+
     fetchRequirements();
+    checkExistingKYC();
   }, []);
 
   const steps = [
@@ -208,12 +226,6 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
         );
 
       case 'info':
-        // Determine available jurisdictions to show
-        // If allowed list is empty, show all known jurisdictions
-        const availableJurisdictions = protocolRequirements.allowed_jurisdictions.length > 0
-          ? protocolRequirements.allowed_jurisdictions
-          : Object.keys(JURISDICTION_NAMES).map(k => parseInt(k));
-
         return (
           <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
             <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
@@ -241,85 +253,48 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
               {documentInfo && (
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Surname:</Box>
+                    <Box component="span">{documentInfo.surname || 'N/A'}</Box>
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Given Names:</Box>
+                    <Box component="span">{documentInfo.given_name || 'N/A'}</Box>
+                  </Typography>
+                  <Divider sx={{ my: 1, opacity: 0.5 }} />
+                  <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Box component="span" sx={{ fontWeight: 600 }}>Nationality:</Box>
+                    <Box component="span">{documentInfo.nationality || documentInfo.country}</Box>
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                     <Box component="span" sx={{ fontWeight: 600 }}>Document No:</Box>
                     <Box component="span">{documentInfo.number}</Box>
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Box component="span" sx={{ fontWeight: 600 }}>Country:</Box>
-                    <Box component="span">{documentInfo.country}</Box>
-                  </Typography>
+                  {documentInfo.nin && (
+                    <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Box component="span" sx={{ fontWeight: 600 }}>NIN:</Box>
+                      <Box component="span">{documentInfo.nin}</Box>
+                    </Typography>
+                  )}
                   {documentInfo.age > 0 && (
-                    <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
                       <Box component="span" sx={{ fontWeight: 600 }}>Verified Age:</Box>
-                      <Box component="span">{documentInfo.age}</Box>
+                      <Box component="span">{documentInfo.age} years</Box>
                     </Typography>
                   )}
                 </Box>
               )}
 
-              {(protocolRequirements.allowed_jurisdictions.length > 0 || protocolRequirements.min_age > 10) && (
-                <>
-                  <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700, mt: 2, mb: 1 }}>
-                    Protocol Requirements
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    {protocolRequirements.min_age > 0 && (
-                      <Chip
-                        size="small"
-                        label={`Age: ${protocolRequirements.min_age}+`}
-                        sx={{ fontWeight: 600, bgcolor: 'white', border: '1px solid', borderColor: 'divider' }}
-                      />
-                    )}
-                    {protocolRequirements.allowed_jurisdictions.length > 0 && (
-                      <Chip
-                        size="small"
-                        label={`Jurisdictions: ${protocolRequirements.allowed_jurisdictions.map(j => JURISDICTION_NAMES[j] || j).join(', ')}`}
-                        sx={{ fontWeight: 600, bgcolor: 'white', border: '1px solid', borderColor: 'divider' }}
-                      />
-                    )}
-                    {protocolRequirements.require_accreditation && (
-                      <Chip
-                        size="small"
-                        label="Accredited Required"
-                        color="warning"
-                        sx={{ fontWeight: 700 }}
-                      />
-                    )}
-                  </Box>
-                </>
-              )}
+              {/* Protocol Requirements section removed as requested */}
             </Paper>
 
-            <TextField
-              fullWidth
-              label="Your Age"
-              type="number"
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
-              required
-              margin="normal"
-              helperText={protocolRequirements.min_age > 0 ? `Must be at least ${protocolRequirements.min_age} years old` : ''}
-            />
+            {/* Manual inputs removed. Age and Jurisdiction are auto-determined from Passport. */
+            /* We keep the state variables for submission but hide the UI inputs if auto-populated. */}
 
-            <TextField
-              fullWidth
-              select
-              label="Your Jurisdiction"
-              value={jurisdiction}
-              onChange={(e) => setJurisdiction(e.target.value)}
-              required
-              margin="normal"
-              disabled={requirementsLoading}
-              SelectProps={{
-                native: true,
-              }}
-            >
-              {availableJurisdictions.map((j: number) => (
-                <option key={j} value={j.toString()}>
-                  {JURISDICTION_NAMES[j] || `Jurisdiction ${j}`}
-                </option>
-              ))}
-            </TextField>
+            {protocolRequirements.allowed_jurisdictions.length > 0 && (
+              <Alert severity="info" sx={{ mb: 3 }}>
+                Jurisdiction automatically set to <strong>{JURISDICTION_NAMES[parseInt(jurisdiction)]}</strong> based on your {documentInfo?.nationality || 'ID'} passport.
+              </Alert>
+            )}
 
             <FormControlLabel
               control={
