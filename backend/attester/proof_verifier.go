@@ -16,6 +16,8 @@ import (
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
+	"github.com/consensys/gnark/std/algebra/native/twistededwards"
+	"github.com/consensys/gnark/std/signature/eddsa"
 )
 
 // ProofVerifier handles proof verification using the verification key
@@ -61,6 +63,21 @@ func (pv *ProofVerifier) Initialize() error {
 		RequireAccreditation: 0,
 		UserAddress:          0,
 		Commitment:           0,
+		// EdDSA Signature (placeholder for compilation)
+		Signature: eddsa.Signature{
+			R: twistededwards.Point{
+				X: 0,
+				Y: 0,
+			},
+			S: 0,
+		},
+		// Attester Public Key (placeholder for compilation)
+		AttesterPublicKey: eddsa.PublicKey{
+			A: twistededwards.Point{
+				X: 0,
+				Y: 0,
+			},
+		},
 	}
 
 	field := ecc.BN254.ScalarField()
@@ -172,12 +189,11 @@ func (pv *ProofVerifier) reconstructPublicWitness(publicInputs []string) (*circu
 	logFile.WriteString(logEntry)
 	// #endregion agent log
 
-	// New optimized circuit structure:
-	// Public inputs: [MinAge, JurisdictionRoot, RequireAccreditation, UserAddress, Commitment]
-	expectedInputs := 5
+	// Public inputs: [MinAge, JurisdictionRoot, RequireAccreditation, UserAddress, Commitment, AttesterPubKey.X, AttesterPubKey.Y]
+	expectedInputs := 7
 	if len(publicInputs) != expectedInputs {
 		logFile.Close()
-		return nil, fmt.Errorf("invalid public inputs: expected %d inputs (MinAge, JurisdictionRoot, RequireAccreditation, UserAddress, Commitment), got %d", expectedInputs, len(publicInputs))
+		return nil, fmt.Errorf("invalid public inputs: expected %d inputs (MinAge, JurisdictionRoot, RequireAccreditation, UserAddress, Commitment, AttesterPubKey.X, AttesterPubKey.Y), got %d", expectedInputs, len(publicInputs))
 	}
 
 	// Parse MinAge (first input)
@@ -220,6 +236,22 @@ func (pv *ProofVerifier) reconstructPublicWitness(publicInputs []string) (*circu
 	}
 	commitment := new(big.Int).SetBytes(commitmentBytes)
 
+	// Parse AttesterPubKey.X (sixth input)
+	attesterPubKeyXBytes, err := hex.DecodeString(publicInputs[5])
+	if err != nil {
+		logFile.Close()
+		return nil, fmt.Errorf("invalid AttesterPubKey.X hex: %w", err)
+	}
+	attesterPubKeyX := new(big.Int).SetBytes(attesterPubKeyXBytes)
+
+	// Parse AttesterPubKey.Y (seventh input)
+	attesterPubKeyYBytes, err := hex.DecodeString(publicInputs[6])
+	if err != nil {
+		logFile.Close()
+		return nil, fmt.Errorf("invalid AttesterPubKey.Y hex: %w", err)
+	}
+	attesterPubKeyY := new(big.Int).SetBytes(attesterPubKeyYBytes)
+
 	// #region agent log
 	logEntry2 := fmt.Sprintf(`{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"proof_verifier.go:218","message":"Parsed all public inputs","data":{"minAge":"%s","jurisdictionRoot":"%s","requireAccred":"%s","commitment":"%s"},"timestamp":%d}`+"\n", minAge.String(), jurisdictionRoot.String(), requireAccred.String(), commitment.String(), time.Now().UnixMilli())
 	logFile.WriteString(logEntry2)
@@ -234,5 +266,11 @@ func (pv *ProofVerifier) reconstructPublicWitness(publicInputs []string) (*circu
 		RequireAccreditation: requireAccred,
 		UserAddress:          userAddress,
 		Commitment:           commitment,
+		AttesterPublicKey: eddsa.PublicKey{
+			A: twistededwards.Point{
+				X: attesterPubKeyX,
+				Y: attesterPubKeyY,
+			},
+		},
 	}, nil
 }

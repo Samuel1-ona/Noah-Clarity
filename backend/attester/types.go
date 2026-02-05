@@ -30,9 +30,12 @@ type CredentialRequest struct {
 
 // DocumentInfo represents verified data from an identity document
 type DocumentInfo struct {
-	Type    string `json:"type"`    // "Passport", "NationalID", etc.
-	Number  string `json:"number"`  // Unique ID number
-	Country string `json:"country"` // ISO Country code
+	Type        string `json:"type"`          // "Passport", "NationalID", etc.
+	Number      string `json:"number"`        // Unique ID number
+	Country     string `json:"country"`       // ISO Country code
+	DateOfBirth string `json:"date_of_birth"` // YYMMDD
+	ExpiryDate  string `json:"expiry_date"`   // YYMMDD
+	Age         int    `json:"age"`           // Calculated age
 }
 
 // Credential represents an issued credential

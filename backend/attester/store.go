@@ -55,16 +55,29 @@ func (s *Store) Save() error {
 // SetIdentity binds an identity fingerprint to an address
 func (s *Store) SetIdentity(fingerprint, address string) {
 	var binding IdentityBinding
-	result := s.db.Where("fingerprint = ?", fingerprint).First(&binding)
-	if result.Error == gorm.ErrRecordNotFound {
-		s.db.Create(&IdentityBinding{
-			Fingerprint: fingerprint,
-			Address:     address,
-		})
-	} else {
+
+	// 1. Check if the address is already bound
+	// If so, we update the fingerprint for this address (assuming identity update/rotation)
+	result := s.db.Where("address = ?", address).First(&binding)
+	if result.Error == nil {
+		binding.Fingerprint = fingerprint
+		s.db.Save(&binding)
+		return
+	}
+
+	// 2. Check if the fingerprint exists (migration to new address?)
+	result = s.db.Where("fingerprint = ?", fingerprint).First(&binding)
+	if result.Error == nil {
 		binding.Address = address
 		s.db.Save(&binding)
+		return
 	}
+
+	// 3. Create new binding
+	s.db.Create(&IdentityBinding{
+		Fingerprint: fingerprint,
+		Address:     address,
+	})
 }
 
 // GetAddress retrieves the address linked to a fingerprint

@@ -49,15 +49,22 @@ func (is *IssuerService) IssueCredential(req *CredentialRequest) (*Credential, e
 	if len(req.Documents) == 0 {
 		return nil, fmt.Errorf("at least one document is required")
 	}
+
 	fingerprint := is.generateIdentityFingerprint(req.Documents[0])
 
 	// 2. Sybil Check: Has this document been used by another address?
-	if existingAddr, exists := is.store.GetAddress(fingerprint); exists {
-		if existingAddr != req.UserAddress {
+	// Use UserID for checking existing registration (canonical identity)
+	checkID := req.UserID
+	if checkID == "" {
+		checkID = req.UserAddress
+	}
+
+	if existingID, exists := is.store.GetAddress(fingerprint); exists {
+		if !strings.EqualFold(existingID, checkID) {
 			// Check if previous commitment is revoked
-			oldCommit, _ := is.store.GetCommitment(existingAddr)
+			oldCommit, _ := is.store.GetCommitment(existingID)
 			if !is.revocationService.IsRevoked(oldCommit) {
-				return nil, fmt.Errorf("this identity is already registered with address %s. Revoke it first to migrate", existingAddr)
+				return nil, fmt.Errorf("this identity is already registered with ID %s. Revoke it first to migrate", existingID)
 			}
 		}
 	}
@@ -121,8 +128,8 @@ func (is *IssuerService) IssueCredential(req *CredentialRequest) (*Credential, e
 	}
 
 	// 4. Update Store
-	is.store.SetIdentity(fingerprint, req.UserAddress)
-	is.store.SetCommitment(req.UserAddress, commitment)
+	is.store.SetIdentity(fingerprint, checkID)
+	is.store.SetCommitment(checkID, commitment)
 	_ = is.store.Save()
 
 	// Store in-memory for quick access
@@ -158,20 +165,41 @@ func (is *IssuerService) generateCommitment(req *CredentialRequest) (string, err
 	}
 
 	addr := new(big.Int)
-	// If address is hex, parse it, otherwise use hash
+	// If address is hex, parse it
 	if strings.HasPrefix(req.UserAddress, "0x") {
 		addr.SetString(req.UserAddress, 0)
 	} else {
-		// Fallback for non-hex addresses (e.g. Stacks principal)
-		// We hash it to fit in a field element
-		h := sha256.Sum256([]byte(req.UserAddress))
-		addr.SetBytes(h[:])
+		// Try parsing as base 10 number first (e.g. from addressToNumeric)
+		if _, ok := addr.SetString(req.UserAddress, 10); !ok {
+			// Fallback for non-numeric/non-hex strings (e.g. raw Stacks principal)
+			// We hash it to fit in a field element
+			h := sha256.Sum256([]byte(req.UserAddress))
+			addr.SetBytes(h[:])
+		}
 	}
 
 	hashFunc := mimc.NewMiMC()
-	hashFunc.Write(idData.Bytes())
-	hashFunc.Write(nonce.Bytes())
-	hashFunc.Write(addr.Bytes())
+
+	// MiMC expects field elements (32 bytes for BN254)
+	// Pad each input to 32 bytes before writing to match ZK circuit logic
+
+	// 1. Identity Data
+	idBytes := make([]byte, 32)
+	idDataBytes := idData.Bytes()
+	copy(idBytes[32-len(idDataBytes):], idDataBytes)
+	hashFunc.Write(idBytes)
+
+	// 2. Nonce
+	nBytes := make([]byte, 32)
+	nonceDataBytes := nonce.Bytes()
+	copy(nBytes[32-len(nonceDataBytes):], nonceDataBytes)
+	hashFunc.Write(nBytes)
+
+	// 3. Address
+	aBytes := make([]byte, 32)
+	addrDataBytes := addr.Bytes()
+	copy(aBytes[32-len(addrDataBytes):], addrDataBytes)
+	hashFunc.Write(aBytes)
 
 	result := hashFunc.Sum(nil)
 	return "0x" + hex.EncodeToString(result), nil
@@ -200,6 +228,7 @@ func (is *IssuerService) CreateAttestation(req *AttestationRequest) (*Attestatio
 	// Verify the proof first
 	verified, err := is.VerifyProof(req.Proof, req.PublicInputs)
 	if !verified || err != nil {
+		fmt.Printf("[DEBUG] Proof Verification Failed: %v, verified: %v\n", err, verified)
 		return &AttestationResponse{
 			Success: false,
 			Error:   "Proof verification failed",
