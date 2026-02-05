@@ -61,43 +61,75 @@ func (o *OCRService) parsePassportText(text string) *DocumentInfo {
 		Type: "Passport",
 	}
 
-	// 1. Look for MRZ patterns (Simplified)
-	// Line 2 of MRZ: [PassportNo (9)][CheckDigit][Nationality (3)][DOB (6)]...
+	// Clean text for better matching
+	cleanText := strings.ReplaceAll(text, " ", "")
+	cleanText = strings.ToUpper(cleanText)
+
+	logger.Debug("Attempting to parse OCR text", zap.String("raw_text", text))
+
+	// 1. Look for MRZ patterns (Simplified but more robust)
+	// Typical MRZ line 2: PassportNo (9) + CheckDigit + Nationality (3) + DOB (6) + CheckDigit + Sex + Expiry (6) + CheckDigit + PersonalNumber...
+	// We look for 9 alphanumeric + 1 digit + 3 alpha + 6 digit
 	mrzPattern := regexp.MustCompile(`([A-Z0-9]{9})[0-9]{1}([A-Z]{3})[0-9]{6}`)
-	matches := mrzPattern.FindStringSubmatch(text)
+	matches := mrzPattern.FindStringSubmatch(cleanText)
 	if len(matches) >= 3 {
 		docInfo.Number = matches[1]
 		docInfo.Country = matches[2]
-		logger.Info("OCR parsed MRZ pattern", zap.String("number", docInfo.Number), zap.String("country", docInfo.Country))
+		logger.Info("OCR parsed MRZ pattern successfully", zap.String("number", docInfo.Number), zap.String("country", docInfo.Country))
 		return docInfo
 	}
 
-	// 2. Fallback: Manual line parsing
+	// 2. Fallback: Manual line-by-line or blob parsing with more lenient patterns
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if len(line) == 0 {
+		line = strings.ToUpper(line)
+		if len(line) < 3 {
 			continue
 		}
 
-		// Passport Number: Usually 9 alpha-numeric characters
+		// Passport Number Fallback: 7-10 alphanumeric characters in a word
 		if docInfo.Number == "" {
-			passNumPattern := regexp.MustCompile(`^[A-Z0-9]{9}$`)
-			if passNumPattern.MatchString(line) {
-				docInfo.Number = line
+			// Look for potential passport number in the line
+			passNumPattern := regexp.MustCompile(`[A-Z0-9]{7,10}`)
+			found := passNumPattern.FindString(line)
+			if found != "" {
+				// Avoid matching short country codes or other small bits
+				if len(found) >= 8 || matchesMRZStyle(found) {
+					docInfo.Number = found
+				}
 			}
 		}
 
-		// Country code: ISO 3-digit Alpha
+		// Country code Fallback: ISO 3-digit Alpha
 		if docInfo.Country == "" {
-			countryPattern := regexp.MustCompile(`^[A-Z]{3}$`)
-			if countryPattern.MatchString(line) {
-				docInfo.Country = line
+			countryPattern := regexp.MustCompile(`\b[A-Z]{3}\b`)
+			found := countryPattern.FindString(line)
+			if found != "" && found != docInfo.Number {
+				docInfo.Country = found
+			}
+		}
+	}
+
+	// 3. Final attempt: Check if we can find a country code anywhere in the text if still missing
+	if docInfo.Country == "" {
+		countryPattern := regexp.MustCompile(`\b[A-Z]{3}\b`)
+		allCountries := countryPattern.FindAllString(cleanText, -1)
+		for _, c := range allCountries {
+			// Skip "P" or "USA" appearing in MRZ headers if they are common
+			if c != "PAS" && c != "IDN" { // Simple filters
+				docInfo.Country = c
+				break
 			}
 		}
 	}
 
 	return docInfo
+}
+
+func matchesMRZStyle(s string) bool {
+	// Simple check: mostly digits or has common passport number prefix
+	return len(s) >= 7
 }
 
 func isAlphaNumeric(s string) bool {

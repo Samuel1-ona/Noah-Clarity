@@ -24,12 +24,13 @@ import { getUserAddress } from '../lib/stacks';
 import { getProtocolRequirements, JURISDICTION_NAMES } from '../config/protocolRequirements';
 import { registerKYCWithProtocol } from '../lib/kyc';
 import { addressToNumeric, generateNumericNonce } from '../lib/identity';
+import { DocumentUpload } from './DocumentUpload';
 import type { ProtocolRequirements } from 'noah-clarity';
 
-type Step = 'info' | 'generate' | 'attest' | 'register' | 'complete';
+type Step = 'document' | 'info' | 'generate' | 'attest' | 'register' | 'complete';
 
 export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onComplete }) => {
-  const [activeStep, setActiveStep] = useState<Step>('info');
+  const [activeStep, setActiveStep] = useState<Step>('document');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -44,6 +45,7 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
   const [age, setAge] = useState('');
   const [jurisdiction, setJurisdiction] = useState('1');
   const [isAccredited, setIsAccredited] = useState(false);
+  const [documentInfo, setDocumentInfo] = useState<{ number: string; country: string } | null>(null);
 
   // Fetch protocol requirements
   useEffect(() => {
@@ -64,6 +66,7 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
   }, []);
 
   const steps = [
+    { id: 'document', label: 'Verify Document' },
     { id: 'info', label: 'Enter Your Information' },
     { id: 'generate', label: 'Generate Privacy Proof' },
     { id: 'attest', label: 'Get Verification' },
@@ -124,7 +127,7 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
       // User credential data
       // Convert address to numeric value for the ZK circuit
       const identityDataNumeric = addressToNumeric(userAddress);
-      
+
       const userCredential = {
         age: ageNum.toString(),
         jurisdiction: jurisdiction,
@@ -139,6 +142,7 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
 
       // Complete KYC registration flow (uses wallet extension, no private key needed)
       const txId = await registerKYCWithProtocol(
+        userAddress,
         userCredential,
         protocolRequirements
       );
@@ -162,6 +166,22 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
 
   const renderStepContent = () => {
     switch (activeStep) {
+      case 'document':
+        return (
+          <DocumentUpload
+            onVerified={(data) => {
+              setDocumentInfo(data);
+              setSuccess('Passport verified successfully! We have pre-filled some information for you.');
+              // Pre-fill jurisdiction if country is found (very simple mapping)
+              if (data.country === 'USA') setJurisdiction('1');
+              else if (data.country === 'GBR') setJurisdiction('2');
+              else if (data.country === 'CAN') setJurisdiction('3');
+
+              setActiveStep('info');
+            }}
+          />
+        );
+
       case 'info':
         return (
           <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
@@ -169,20 +189,28 @@ export const KYCRegistration: React.FC<{ onComplete?: () => void }> = ({ onCompl
               Complete Your KYC Verification
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Your personal information is protected with zero-knowledge proofs. 
+              Your personal information is protected with zero-knowledge proofs.
               We verify you meet the requirements without seeing your actual data.
             </Typography>
 
             <Paper elevation={0} sx={{ p: 2, mb: 3, bgcolor: 'primary.50', border: '1px solid', borderColor: 'primary.200' }}>
               <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
+                Verified Identity Information
+              </Typography>
+              {documentInfo && (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Passport No: {documentInfo.number} | Country: {documentInfo.country}
+                </Typography>
+              )}
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt: 1 }}>
                 Protocol Requirements
               </Typography>
               <Box sx={{ mt: 1 }}>
                 <Chip size="small" label={`Minimum Age: ${protocolRequirements.min_age}+`} sx={{ mr: 1, mb: 1 }} />
-                <Chip 
-                  size="small" 
-                  label={`Jurisdictions: ${protocolRequirements.allowed_jurisdictions.map(j => JURISDICTION_NAMES[j] || j).join(', ')}`} 
-                  sx={{ mr: 1, mb: 1 }} 
+                <Chip
+                  size="small"
+                  label={`Jurisdictions: ${protocolRequirements.allowed_jurisdictions.map(j => JURISDICTION_NAMES[j] || j).join(', ')}`}
+                  sx={{ mr: 1, mb: 1 }}
                 />
                 {protocolRequirements.require_accreditation && (
                   <Chip size="small" label="Accredited Investor Required" color="warning" />

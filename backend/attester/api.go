@@ -93,7 +93,19 @@ func (api *API) VerifyPassport(c *gin.Context) {
 	// Extract info using OCR
 	docInfo, err := api.ocrService.ExtractPassportInfo(tempPath)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Differentiate between OCR failure and data extraction failure
+		if strings.Contains(err.Error(), "extract mandatory passport fields") {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"success": false,
+				"error":   "Could not read passport details. Please ensure the MRZ area (bottom of the passport) is clearly visible.",
+				"details": err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "OCR processing failed: " + err.Error(),
+			})
+		}
 		return
 	}
 

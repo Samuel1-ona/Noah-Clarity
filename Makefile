@@ -22,11 +22,11 @@ clean:
 
 # Run proof service
 run-prover:
-	cd backend/prover && go run main.go
+	cd backend/prover && go run .
 
 # Run attester service
 run-attester:
-	cd backend/attester && go run main.go
+	cd backend/attester && go run .
 
 # Install all dependencies
 install:

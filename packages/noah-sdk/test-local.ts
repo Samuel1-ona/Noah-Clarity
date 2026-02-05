@@ -124,7 +124,7 @@ async function testContractReadOnly(sdk: NoahSDK, testAddress: string): Promise<
   try {
     // Test hasKYC (should return false for test address)
     const hasKYC = await sdk.contract.hasKYC(testAddress);
-    console.log(' hasKYC check successful:', hasKYC.hasKYC);
+    console.log(' hasKYC check successful:', hasKYC);
 
     // Test isKYCValid
     const isValid = await sdk.contract.isKYCValid(testAddress);

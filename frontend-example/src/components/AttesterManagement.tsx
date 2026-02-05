@@ -13,15 +13,16 @@ import {
   Grid,
 } from '@mui/material';
 import { openContractCall } from '@stacks/connect';
-import { bufferCV, uintCV } from '@stacks/transactions';
+import { bufferCV, uintCV, standardPrincipalCV } from '@stacks/transactions';
 import { getNetwork } from '../lib/stacks';
 
-const ATTESTER_REGISTRY_CONTRACT = import.meta.env.VITE_ATTESTER_REGISTRY || 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Attester-registry';
+const ATTESTER_REGISTRY_CONTRACT = import.meta.env.VITE_ATTESTER_REGISTRY || 'ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J.attester-registry';
 
 export const AttesterManagement: React.FC = () => {
   const attesterServiceUrl = import.meta.env.VITE_ATTESTER_URL || 'http://localhost:8081';
   const [attesterId, setAttesterId] = useState<string>('1');
   const [publicKey, setPublicKey] = useState<string>('');
+  const [attesterAddress, setAttesterAddress] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [loadingInfo, setLoadingInfo] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,8 +72,8 @@ export const AttesterManagement: React.FC = () => {
     setSuccess(null);
 
     // Validate inputs
-    if (!attesterId || !publicKey) {
-      setError('Please provide both Attester ID and Public Key');
+    if (!attesterId || !publicKey || !attesterAddress) {
+      setError('Please provide Attester ID, Public Key, and Stacks Address');
       return;
     }
 
@@ -116,6 +117,7 @@ export const AttesterManagement: React.FC = () => {
           functionArgs: [
             bufferCV(publicKeyBuffer) as any,
             uintCV(attesterIdNum) as any,
+            standardPrincipalCV(attesterAddress) as any,
           ],
           network: getNetwork(),
           onFinish: (data) => {
@@ -205,6 +207,18 @@ export const AttesterManagement: React.FC = () => {
                 disabled={loading}
                 multiline
                 rows={2}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Attester Stacks Address"
+                value={attesterAddress}
+                onChange={(e) => setAttesterAddress(e.target.value)}
+                placeholder="ST..."
+                helperText="The Stacks address this attester will use (for on-chain identity)"
+                disabled={loading}
               />
             </Grid>
 

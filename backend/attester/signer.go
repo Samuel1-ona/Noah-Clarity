@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
-	
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
@@ -111,9 +110,6 @@ func (s *Signer) GetEdDSAPublicKey() eddsa.PublicKey {
 // Since the commitment is already a 32-byte hash, we sign it directly (ECDSA hashes internally)
 func (s *Signer) SignWithSHA256(messageHash []byte) (string, error) {
 
-
-
-
 	// Use crypto.Sign (returns 65 bytes: r || s || v)
 	signature, err := crypto.Sign(messageHash, s.privateKey)
 	if err != nil {
@@ -150,12 +146,8 @@ func (s *Signer) SignWithSHA256(messageHash []byte) (string, error) {
 	// Reconstruct signature with normalized s
 	normalizedSig := append(rBytes, normalizedSBytes...)
 
-
-
 	// Clarity accepts 64-byte signatures (r || s, no recovery ID) with low-S normalization
 	sigHex := hex.EncodeToString(normalizedSig)
-
-
 
 	// Return 64-byte signature (Clarity accepts this format)
 	return sigHex, nil
@@ -188,6 +180,12 @@ func (s *Signer) GetPublicKey() string {
 func (s *Signer) GetAttesterID() uint {
 	return s.attesterID
 }
+
+// GetStacksAddress returns the Stacks address for this signer
+// Note: In production this would use the stacks-go library to derive the address
+// For now, we return it as a string if we had it, or just use a placeholder/not implemented
+// Actually, since we don't have the stacks-go library here, we'll just not add it to avoid confusion
+// unless we strictly need it. The frontend can handle it if the user knows their address.
 
 // VerifySignature verifies a signature (for testing)
 func VerifySignature(message []byte, signatureHex string, publicKeyHex string) (bool, error) {

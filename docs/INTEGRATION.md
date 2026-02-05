@@ -32,8 +32,8 @@ import { NoahSDK } from 'noah-clarity';
 
 const sdk = new NoahSDK(
   {
-    kycRegistryAddress: 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.KYc-registry',
-    attesterRegistryAddress: 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.Attester-registry',
+    kycRegistryAddress: 'ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J.kyc-registry',
+    attesterRegistryAddress: 'ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J.attester-registry',
     network: 'testnet', // Use 'mainnet' when ready for production
     proverServiceUrl: 'http://localhost:8080', // Optional, defaults shown
     attesterServiceUrl: 'http://localhost:8081', // Optional, defaults shown

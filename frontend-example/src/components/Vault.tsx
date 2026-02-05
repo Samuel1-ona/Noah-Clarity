@@ -32,7 +32,7 @@ import {
 } from '@stacks/transactions';
 import { openContractCall } from '@stacks/connect';
 
-const VAULT_CONTRACT = 'STVAH96MR73TP2FZG2W4X220MEB4NEMJHPMVYQNS.simple-vault';
+const VAULT_CONTRACT = 'ST2N04CYE3CQ1S354MZX4KHYJYD4QW25ZW37GQY7J.simple-vault';
 
 interface VaultState {
   balance: string;
@@ -113,7 +113,7 @@ export const Vault: React.FC = () => {
     try {
       const [contractAddress, contractName] = VAULT_CONTRACT.split('.');
       const network = getNetwork();
-      
+
       const result = await callReadOnlyFunction({
         contractAddress,
         contractName,
@@ -290,10 +290,10 @@ export const Vault: React.FC = () => {
               </Typography>
               <Box sx={{ mt: 1 }}>
                 <Chip size="small" label={`Age: ${protocolRequirements.min_age}+`} sx={{ mr: 1, mb: 1 }} />
-                <Chip 
-                  size="small" 
-                  label={`Jurisdictions: ${protocolRequirements.allowed_jurisdictions.map(j => JURISDICTION_NAMES[j] || j).join(', ')}`} 
-                  sx={{ mr: 1, mb: 1 }} 
+                <Chip
+                  size="small"
+                  label={`Jurisdictions: ${protocolRequirements.allowed_jurisdictions.map(j => JURISDICTION_NAMES[j] || j).join(', ')}`}
+                  sx={{ mr: 1, mb: 1 }}
                 />
                 {protocolRequirements.require_accreditation && (
                   <Chip size="small" label="Accredited Investor" color="warning" />
@@ -317,12 +317,12 @@ export const Vault: React.FC = () => {
           <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
             Secure Vault
           </Typography>
-          <Chip 
-            icon={<CheckCircleIcon />} 
-            label="KYC Verified" 
-            color="success" 
-            size="small" 
-            sx={{ ml: 'auto' }} 
+          <Chip
+            icon={<CheckCircleIcon />}
+            label="KYC Verified"
+            color="success"
+            size="small"
+            sx={{ ml: 'auto' }}
           />
         </Box>
 
