@@ -69,8 +69,72 @@ func (o *OCRService) parsePassportText(text string) *DocumentInfo {
 	logger.Debug("Attempting to parse OCR text", zap.String("raw_text", text))
 
 	// 1. Look for MRZ patterns (Simplified but more robust)
-	// Typical MRZ line 2: PassportNo (9) + CheckDigit + Nationality (3) + DOB (6) + CheckDigit + Sex + Expiry (6) + CheckDigit + PersonalNumber...
-	// We look for 9 alphanumeric + 1 digit + 3 alpha + 6 digit (DOB) + 1 digit + 1 alpha (Sex) + 6 digit (Expiry)
+	// Typical MRZ Line 1: P<CTYSurname<<GivenNames<<<<<<
+	// Typical MRZ Line 2: PassportNo+Digit+Nat+DOB+Digit+Sex+Expiry+Digit+PersonalNumber+...
+
+	// We will try to find two lines that look like MRZ
+	mrzLines := findMRZLines(cleanText)
+	if len(mrzLines) == 2 {
+		line1 := mrzLines[0]
+		line2 := mrzLines[1]
+
+		// Parse Line 2 first for core data
+		// Format: [9 chars Number][1 digit][3 chars Nat][6 digits DOB][1 digit][1 char Sex][6 digits Expiry][1 digit][14 chars Personal/NIN][...]
+		if len(line2) >= 44 {
+			docInfo.Number = line2[0:9]
+			docInfo.Country = line2[10:13] // Nationality from Line 2
+			docInfo.Nationality = docInfo.Country
+			docInfo.DateOfBirth = line2[13:19]
+			docInfo.Age = calculateAge(docInfo.DateOfBirth)
+			docInfo.ExpiryDate = line2[21:27]
+
+			// Extract NIN (Personal Number) - usually indices 28 to 42 (variable length, typically 11 digits for NGA)
+			// For NGA passport in image: ...290425069830326924<<<86
+			// Expiry: 290425 (indices 21-27), Check: 0 (index 27)
+			// NIN starts at index 28. In the example: 69830326924 (11 digits)
+			potentialNIN := line2[28:39] // Take 11 chars
+			if isDigits(potentialNIN) {
+				docInfo.NIN = potentialNIN
+			}
+		}
+
+		// Parse Line 1 for Names
+		// Format: P<CTYSurname<<GivenNames<<<<...
+		if len(line1) > 5 && strings.HasPrefix(line1, "P") {
+			// Strip P< and Country Code (usually 5 chars total: P<NGA)
+			// But sometimes separator is just <
+			parts := strings.Split(line1, "<<")
+			if len(parts) >= 2 {
+				// Surname part: P<NGAONANIKE
+				surnamePart := parts[0]
+				// Remove P<NGA prefix if present. NGA is 3 chars. P< is 2 chars.
+				if len(surnamePart) > 5 {
+					// Check if it starts with P<
+					if surnamePart[0:2] == "P<" {
+						// Extract country code to verify length? Assuming 3 chars.
+						// Surname starts at index 5
+						docInfo.Surname = strings.ReplaceAll(surnamePart[5:], "<", "")
+					}
+				}
+
+				// Given Names part: SAMUEL<CHISOM<<<<
+				givenPart := parts[1]
+				docInfo.GivenName = strings.ReplaceAll(givenPart, "<", " ")
+				docInfo.GivenName = strings.TrimSpace(docInfo.GivenName)
+			}
+		}
+
+		logger.Info("OCR parsed MRZ pattern successfully",
+			zap.String("number", docInfo.Number),
+			zap.String("surname", docInfo.Surname),
+			zap.String("given_name", docInfo.GivenName),
+			zap.String("nin", docInfo.NIN),
+			zap.Int("age", docInfo.Age))
+
+		return docInfo
+	}
+
+	// Fallback regex for single line matching (legacy)
 	mrzPattern := regexp.MustCompile(`([A-Z0-9]{9})[0-9]{1}([A-Z]{3})([0-9]{6})[0-9]{1}[A-Z]{1}([0-9]{6})`)
 	matches := mrzPattern.FindStringSubmatch(cleanText)
 	if len(matches) >= 5 {
@@ -85,8 +149,6 @@ func (o *OCRService) parsePassportText(text string) *DocumentInfo {
 			zap.Int("age", docInfo.Age))
 		return docInfo
 	}
-
-	// 2. Fallback: Manual line-by-line or blob parsing with more lenient patterns
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -207,6 +269,32 @@ func matchesMRZStyle(s string) bool {
 func isAlphaNumeric(s string) bool {
 	for _, r := range s {
 		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+			return false
+		}
+	}
+	return true
+}
+
+func findMRZLines(text string) []string {
+	lines := strings.Split(text, "\n")
+	var mrzLines []string
+	for _, line := range lines {
+		// Clean line: keep only A-Z, 0-9, <
+		reg, _ := regexp.Compile("[^A-Z0-9<]")
+		cleanLine := reg.ReplaceAllString(strings.ToUpper(line), "")
+
+		// MRZ lines are typically 44 chars long for passports (Type 3)
+		// We'll accept slightly less/more due to OCR errors, but they must contain <<
+		if len(cleanLine) > 30 && strings.Contains(cleanLine, "<<") {
+			mrzLines = append(mrzLines, cleanLine)
+		}
+	}
+	return mrzLines
+}
+
+func isDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
 			return false
 		}
 	}

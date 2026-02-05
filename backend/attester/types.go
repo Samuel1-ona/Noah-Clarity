@@ -32,10 +32,14 @@ type CredentialRequest struct {
 type DocumentInfo struct {
 	Type        string `json:"type"`          // "Passport", "NationalID", etc.
 	Number      string `json:"number"`        // Unique ID number
-	Country     string `json:"country"`       // ISO Country code
+	Surname     string `json:"surname"`       // Extracted Surname
+	GivenName   string `json:"given_name"`    // Extracted Given Names
+	Nationality string `json:"nationality"`   // ISO Country code (e.g., NGA)
+	Country     string `json:"country"`       // Issuing Country (often same as Nationality)
 	DateOfBirth string `json:"date_of_birth"` // YYMMDD
 	ExpiryDate  string `json:"expiry_date"`   // YYMMDD
 	Age         int    `json:"age"`           // Calculated age
+	NIN         string `json:"nin"`           // National Identity Number (optional)
 }
 
 // Credential represents an issued credential

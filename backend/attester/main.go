@@ -7,12 +7,15 @@ package main
 // @BasePath /
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"noah-v2/backend/pkg/health"
 	"noah-v2/backend/pkg/logger"
@@ -32,66 +35,55 @@ import (
 // discoverNextAvailableID queries the contract to find the next available attester ID
 // Starts from ID 1 and increments until finding an available one
 func discoverNextAvailableID(config *Config) (uint, error) {
-	startID := uint(1)
-	maxAttempts := uint(100) // Limit search to prevent infinite loops
+	// For development, we want a "new ID every time" and to avoid rate limits.
+	// We'll pick a random ID in a very high range (1000-11000).
+	// Collision probability is nearly zero in development.
+	rand.Seed(time.Now().UnixNano())
+	testID := uint(1000 + rand.Int31n(10000))
 
 	// Parse contract address
 	parts := strings.Split(config.AttesterRegistry, ".")
 	if len(parts) != 2 {
-		return 0, fmt.Errorf("invalid contract address format: %s", config.AttesterRegistry)
+		return testID, nil // Fallback to random ID if config is weird
 	}
 	contractAddress := parts[0]
 	contractName := parts[1]
 
-	// Determine API URL based on network
 	apiURL := "https://api.testnet.hiro.so/v2"
 	if config.StacksNetwork == "mainnet" {
 		apiURL = "https://api.hiro.so/v2"
 	}
 
-	// Try IDs starting from 1
-	for i := uint(0); i < maxAttempts; i++ {
-		testID := startID + i
+	// Quick one-time check. If rate limited, just proceed with the random ID.
+	idBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(idBytes, uint64(testID))
+	idHex := "0x01000000000000000000000000000000" + hex.EncodeToString(idBytes)
 
-		// Encode ID as Clarity uint (little-endian, 8 bytes)
-		idBytes := make([]byte, 8)
-		idBytes[0] = byte(testID)
-		idBytes[1] = byte(testID >> 8)
-		idBytes[2] = byte(testID >> 16)
-		idBytes[3] = byte(testID >> 24)
-		idBytes[4] = byte(testID >> 32)
-		idBytes[5] = byte(testID >> 40)
-		idBytes[6] = byte(testID >> 48)
-		idBytes[7] = byte(testID >> 56)
-		idHex := "0x01000000000000000000000000000000" + hex.EncodeToString(idBytes)
+	url := fmt.Sprintf("%s/contracts/call-read/%s/%s/get-attester-pubkey", apiURL, contractAddress, contractName)
+	payload := fmt.Sprintf(`{"sender": "%s", "arguments": ["%s"]}`, contractAddress, idHex)
 
-		// Call contract read-only function
-		url := fmt.Sprintf("%s/contracts/call-read/%s/%s/get-attester-pubkey", apiURL, contractAddress, contractName)
-		payload := fmt.Sprintf(`{"sender": "%s", "arguments": ["%s"]}`, contractAddress, idHex)
+	resp, err := http.Post(url, "application/json", strings.NewReader(payload))
+	if err != nil {
+		fmt.Printf("Warning: Could not verify ID %d availability (network error). Using it anyway.\n", testID)
+		return testID, nil
+	}
+	defer resp.Body.Close()
 
-		resp, err := http.Post(url, "application/json", strings.NewReader(payload))
-		if err != nil {
-			return 0, fmt.Errorf("failed to query contract: %w", err)
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return 0, fmt.Errorf("failed to read response: %w", err)
-		}
-
-		// If response contains error (attester not found), this ID is available
-		bodyStr := string(body)
-		if strings.Contains(bodyStr, "ERR_ATTESTER_NOT_FOUND") ||
-			strings.Contains(bodyStr, "u1003") ||
-			!strings.Contains(bodyStr, `"okay":true`) {
-			// ID is not found, so it's available
-			return testID, nil
-		}
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("Warning: Could not verify ID %d availability (Status %d). Using it anyway.\n", testID, resp.StatusCode)
+		return testID, nil
 	}
 
-	// If we've tried many IDs and all are taken, return an error
-	return 0, fmt.Errorf("could not find available ID after %d attempts", maxAttempts)
+	body, _ := io.ReadAll(resp.Body)
+	bodyStr := string(body)
+
+	// If it explicitly says okay:true and NO "none", it's taken.
+	if strings.Contains(bodyStr, `"okay":true`) && !strings.Contains(bodyStr, `"result":"none"`) {
+		fmt.Printf("ID %d is taken, picking another...\n", testID)
+		return discoverNextAvailableID(config) // Recursive one-level retry
+	}
+
+	return testID, nil
 }
 
 func main() {
