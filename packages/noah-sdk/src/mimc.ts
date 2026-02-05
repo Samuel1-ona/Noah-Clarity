@@ -119,32 +119,33 @@ export const MIMC_BN254_CONSTANTS = [
 ];
 
 /**
- * MiMC-7 Permutation (x^5)
+ * MiMC-7 encryption function (named mimc7 for compatibility, uses x^5)
+ * @param m Message
+ * @param k Key (state)
  */
 export function mimc7(m: bigint, k: bigint): bigint {
-    return mimcPermute(m, k);
-}
-
-function mimcPermute(m: bigint, k: bigint): bigint {
-    let h = k;
+    let res = m;
     for (let i = 0; i < MIMC_BN254_CONSTANTS.length; i++) {
-        // (m + k + c)^5
-        const tmp = (m + h + MIMC_BN254_CONSTANTS[i]) % BN254_MODULUS;
+        // (res + k + c)^5
+        const tmp = (res + k + MIMC_BN254_CONSTANTS[i]) % BN254_MODULUS;
         const tmp2 = (tmp * tmp) % BN254_MODULUS;
         const tmp4 = (tmp2 * tmp2) % BN254_MODULUS;
-        m = (tmp4 * tmp) % BN254_MODULUS;
+        res = (tmp4 * tmp) % BN254_MODULUS;
     }
-    return (m + h) % BN254_MODULUS;
+    // Return res + k (Miyaguchi-Preneel part)
+    return (res + k) % BN254_MODULUS;
 }
 
 /**
- * MiMC Hash Function (Miyaguchi-Preneel)
+ * MiMC Hash Function (Miyaguchi-Preneel construction)
+ * Matches gnark-crypto/ecc/bn254/fr/mimc implementation EXACTLY.
  */
 export function mimcHash(data: bigint[]): bigint {
     let h = 0n;
     for (const d of data) {
-        const r = mimcPermute(d, h);
-        h = (h + r + d) % BN254_MODULUS;
+        // h = encrypt(d, h) + h + d
+        const r = mimc7(d, h);
+        h = (r + h + d) % BN254_MODULUS;
     }
     return h;
 }

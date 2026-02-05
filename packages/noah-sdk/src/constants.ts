@@ -8,11 +8,13 @@ export const CIRCUIT_CONSTANTS = {
     ALLOWED_JURISDICTIONS_COUNT: 10,
 
     // Indices of public inputs in the generated proof
+    // Order from kyc.go: MinAge, JurisdictionRoot, RequireAccreditation, UserAddress, Commitment, AttesterPublicKey
     PUBLIC_INPUTS: {
-        COMMITMENT: 0,
-        MIN_AGE: 1,
-        JURISDICTIONS_START: 2,
-        REQUIRE_ACCREDITATION: 12,
-        ATTESTER_PUBKEY_START: 13, // 13 (X) and 14 (Y)
+        MIN_AGE: 0,
+        JURISDICTION_ROOT: 1,
+        REQUIRE_ACCREDITATION: 2,
+        USER_ADDRESS: 3,
+        COMMITMENT: 4,
+        ATTESTER_PUBKEY_START: 5, // 5 (X) and 6 (Y)
     }
 };

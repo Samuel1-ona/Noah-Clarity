@@ -74,18 +74,29 @@ export interface AttesterInfo {
 }
 
 export interface ProofRequest {
+  // Private witness data
   age: string;
   jurisdiction: string;
   is_accredited: string;
   identity_data: string;
   nonce: string;
-  min_age: string;
-  allowed_jurisdictions: string[];
-  require_accreditation: string;
-  commitment: string;
+
+  // Merkle proof fields (private)
+  merkle_path: string[];
+  merkle_helper: string[];
+
+  // EdDSA Signature (Private Witness)
   signature: EdDSASignature;
-  attester_pub_key: EdDSAPublicKey;
+
+  // Public inputs
+  min_age: string;
+  jurisdiction_root: string;
+  require_accreditation: string;
   user_address: string;
+  commitment: string;
+
+  // Attester Public Key (Public Input)
+  attester_pub_key: EdDSAPublicKey;
 }
 
 export interface ProofResponse {

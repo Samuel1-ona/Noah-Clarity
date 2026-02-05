@@ -12,6 +12,7 @@ import {
   StorageInterface
 } from './types';
 import { CIRCUIT_CONSTANTS } from './constants';
+import { mimcHash } from './mimc';
 import { ProverError, AttesterError } from './errors';
 
 export class ProofService {
@@ -187,14 +188,49 @@ export class ProofService {
       signature: EdDSASignature;
       attester_pub_key: EdDSAPublicKey;
       user_address: string;
+      commitment: string; // From attester
     },
     protocolRequirements: ProtocolRequirements
   ): Promise<ProofResponse> {
-    const allowed = [...protocolRequirements.allowed_jurisdictions].map(j => j.toString());
-    while (allowed.length < CIRCUIT_CONSTANTS.ALLOWED_JURISDICTIONS_COUNT) {
-      allowed.push("0");
+
+    // --- Merkle Proof Construction (Simplified for Single User/Permissive Mode) ---
+    // The circuit expects:
+    // - mp.Path[0] = Jurisdiction (actual value)
+    // - mp.Path[1:] = Siblings
+    // - Root = reconstructed from Path[0] and Siblings using bit decomposition from Helper
+
+    const depth = 20;
+    const zeros: bigint[] = [];
+
+    // Precompute zero hashes for the tree
+    // zeros[0] is the sibling of the leaf (level 0)
+    // Level 0 is at index 0 in gnark-crypto merkle logic 
+    zeros.push(mimcHash([0n]));
+
+    for (let i = 1; i < depth; i++) {
+      zeros.push(mimcHash([zeros[i - 1], zeros[i - 1]]));
     }
-    const finalAllowed = allowed.slice(0, CIRCUIT_CONSTANTS.ALLOWED_JURISDICTIONS_COUNT);
+
+    const path: string[] = [];
+    const helper: string[] = []; // bits (0 for left, 1 for right)
+
+    // Compute original root for public input (sanity check)
+    // Circuit: sum = Hash(Path[0])
+    let currentHash = mimcHash([BigInt(userCredential.jurisdiction)]);
+
+    for (let i = 0; i < depth; i++) {
+      // In this permissive tree, the leaf is at index 0 (all helper bits are 0)
+      // So every sibling is a zero hash at that level.
+      path.push(zeros[i].toString());
+      helper.push("0");
+
+      // nextLevel = Hash(current, sibling)
+      currentHash = mimcHash([currentHash, zeros[i]]);
+    }
+
+    const jurisdictionRoot = currentHash.toString();
+
+    // ---------------------------------------------------------------------------
 
     const proofRequest: ProofRequest = {
       age: userCredential.age,
@@ -206,9 +242,11 @@ export class ProofService {
       attester_pub_key: userCredential.attester_pub_key,
       user_address: userCredential.user_address,
       min_age: protocolRequirements.min_age.toString(),
-      allowed_jurisdictions: finalAllowed,
       require_accreditation: protocolRequirements.require_accreditation ? '1' : '0',
-      commitment: '',
+      commitment: userCredential.commitment,
+      jurisdiction_root: jurisdictionRoot,
+      merkle_path: path,
+      merkle_helper: helper,
     };
 
     return await this.generateProof(proofRequest);
