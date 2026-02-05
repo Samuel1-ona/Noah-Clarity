@@ -99,12 +99,14 @@ func TestKYCCircuit(t *testing.T) {
 	sibling2.SetBytes(h34)
 
 	// 2. Identity Commitment
-	// Commitment = MiMC(IdentityData, Nonce)
+	// Commitment = MiMC(IdentityData, Nonce, UserAddress)
 	h.Reset()
 	idData := new(fr.Element).SetUint64(12345).Bytes()
 	nonce := new(fr.Element).SetUint64(67890).Bytes()
+	addr := new(fr.Element).SetUint64(111).Bytes()
 	h.Write(idData[:])
 	h.Write(nonce[:])
+	h.Write(addr[:])
 	commitmentBytes := h.Sum(nil)
 	var commitment fr.Element
 	commitment.SetBytes(commitmentBytes)
@@ -116,6 +118,7 @@ func TestKYCCircuit(t *testing.T) {
 		IsAccredited: 1,
 		IdentityData: 12345,
 		Nonce:        67890,
+		UserAddress:  111,
 
 		// Merkle Proof for Index 0 (Value 1)
 		// Path: [sibling1, sibling2]

@@ -108,6 +108,7 @@ func (circuit *KYCCircuit) Define(api frontend.API) error {
 	computedCommitment := mimcHash.Sum()
 
 	api.AssertIsEqual(circuit.Commitment, computedCommitment)
+	mimcHash.Reset()
 
 	// 5. Attester Signature Verification
 	// Verifies that the Commitment was signed by a trusted Attester
