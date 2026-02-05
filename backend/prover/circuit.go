@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 
@@ -166,6 +167,27 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 		}, err
 	}
 
+	// Convert string slices to frontend.Variable slices for the witness
+	merklePath := make([]frontend.Variable, len(req.MerklePath))
+	for i, v := range req.MerklePath {
+		bi := new(big.Int)
+		if _, ok := bi.SetString(v, 0); ok {
+			merklePath[i] = bi
+		} else {
+			merklePath[i] = 0
+		}
+	}
+
+	merkleHelper := make([]frontend.Variable, len(req.MerkleHelper))
+	for i, v := range req.MerkleHelper {
+		bi := new(big.Int)
+		if _, ok := bi.SetString(v, 0); ok {
+			merkleHelper[i] = bi
+		} else {
+			merkleHelper[i] = 0
+		}
+	}
+
 	witnessData := &circuit.KYCCircuit{
 		// Private inputs
 		Age:          req.Age.Int,
@@ -174,8 +196,8 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 		IdentityData: req.IdentityData.Int,
 		Nonce:        req.Nonce.Int,
 		// Merkle proof fields (must be provided in request)
-		MerklePath:   req.MerklePath,
-		MerkleHelper: req.MerkleHelper,
+		MerklePath:   merklePath,
+		MerkleHelper: merkleHelper,
 		// Public inputs
 		MinAge:               req.MinAge.Int,
 		JurisdictionRoot:     req.JurisdictionRoot.Int,
@@ -193,8 +215,8 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 		// Attester Public Key (Public Input)
 		AttesterPublicKey: eddsa.PublicKey{
 			A: twistededwards.Point{
-				X: req.AttesterPubKey.X.Int,
-				Y: req.AttesterPubKey.Y.Int,
+				X: req.AttesterPubKey.A.X.Int,
+				Y: req.AttesterPubKey.A.Y.Int,
 			},
 		},
 	}
@@ -273,8 +295,8 @@ func (cm *CircuitManager) GenerateProof(req *ProofRequest) (*ProofResponse, erro
 	// Add Attester Public Key (Public Input)
 	// Order must match circuit's public input ordering!
 	// In kyc.go: MinAge, JurisdictionRoot, RequireAccreditation, UserAddress, Commitment, AttesterPublicKey
-	attesterPubKeyAXHex := padHex(req.AttesterPubKey.X.Int.Text(16))
-	attesterPubKeyAYHex := padHex(req.AttesterPubKey.Y.Int.Text(16))
+	attesterPubKeyAXHex := padHex(req.AttesterPubKey.A.X.Int.Text(16))
+	attesterPubKeyAYHex := padHex(req.AttesterPubKey.A.Y.Int.Text(16))
 	publicInputs = append(publicInputs, attesterPubKeyAXHex)
 	publicInputs = append(publicInputs, attesterPubKeyAYHex)
 

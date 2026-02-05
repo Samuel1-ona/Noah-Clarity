@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-
-	"github.com/consensys/gnark/frontend"
 )
 
 // BigIntString is a wrapper for big.Int that unmarshals from JSON strings
@@ -26,7 +24,7 @@ func (b *BigIntString) UnmarshalJSON(data []byte) error {
 	}
 
 	b.Int = new(big.Int)
-	_, ok := b.Int.SetString(str, 10)
+	_, ok := b.Int.SetString(str, 0)
 	if !ok {
 		// Try as number (fallback)
 		var n json.Number
@@ -66,8 +64,8 @@ type ProofRequest struct {
 	Nonce        BigIntString `json:"nonce"`
 
 	// Merkle proof fields (private)
-	MerklePath   []frontend.Variable `json:"merkle_path"`
-	MerkleHelper []frontend.Variable `json:"merkle_helper"`
+	MerklePath   []string `json:"merkle_path"`
+	MerkleHelper []string `json:"merkle_helper"`
 
 	// EdDSA Signature (Private Witness)
 	Signature struct {
@@ -87,8 +85,10 @@ type ProofRequest struct {
 
 	// Attester Public Key (Public Input)
 	AttesterPubKey struct {
-		X BigIntString `json:"x"`
-		Y BigIntString `json:"y"`
+		A struct {
+			X BigIntString `json:"x"`
+			Y BigIntString `json:"y"`
+		} `json:"a"`
 	} `json:"attester_pub_key"`
 }
 
@@ -106,6 +106,7 @@ type JobResponse struct {
 	JobID   string `json:"job_id"`
 	Status  string `json:"status"` // "pending", "processing", "completed", "failed"
 	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
 }
 
 // JobStatusResponse represents the current status of a proof generation job

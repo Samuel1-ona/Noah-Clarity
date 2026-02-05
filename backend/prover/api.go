@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -36,10 +38,15 @@ func (api *API) Initialize() error {
 // @Success 202 {object} JobResponse
 // @Router /proof/generate [post]
 func (api *API) GenerateProof(c *gin.Context) {
+	// Debug: log raw request body (optional, keep for error context if needed, but remove print)
+	bodyBytes, _ := io.ReadAll(c.Request.Body)
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
 	var req ProofRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, JobResponse{
 			Success: false,
+			Error:   fmt.Sprintf("invalid request format: %v", err),
 		})
 		return
 	}
