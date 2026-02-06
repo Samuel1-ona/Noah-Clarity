@@ -47,19 +47,20 @@ The Prover runs a series of mathematical checks (constraints) that must all pass
 
 ---
 
-##  Operational Workflow
+##  The Workflow: A User's Journey
 
-1.  **Issuance**: User sends OCR data to Attester -> Attester verifies and returns a **Signed Credential**.
-2.  **Job Submission**: User sends the Credential + Protocol Requirements to the Prover.
-3.  **Proof Generation**: The Prover takes ~5-15 seconds to generate a Groth16 proof (depending on CPU).
-4.  **Attestation**: The user takes the completed Proof back to the Attester to get a final "On-chain Attestation" (This bit is the final green light for the smart contract).
-5.  **Registration**: The user submits the Proof + Attestation to the `kyc-registry` contract on Stacks.
+1.  **Step 1 (The Check-In)**: The user uploads a document to the **Attester**.
+2.  **Step 2 (The Voucher)**: The **Attester** verifies the doc and hands the user a **Signed Credential** (the "Secret Handshake").
+3.  **Step 3 (The Proof)**: The user gives that credential to the **Prover**.
+4.  **Step 4 (The Result)**: The **Prover** huffs and puffs for a few seconds and returns a **ZK-Proof**.
+5.  **Step 5 (The Chain)**: The user submits that ZK-Proof to the **Smart Contract**. The contract verifies the proof is valid and grants access—without ever knowing who the user is.
 
 ---
 
-##  Technical Requirements
+##  Technical Foundation
 
-- **Curve**: BN254 (for compatibility with gnark and Ethereum/Stacks ZK precompiles).
-- **Proving System**: Groth16.
-- **Hash Function**: MiMC-7 (optimized for ZK constraints).
-- **Tree Depth**: 20 (supporting up to 1,048,576 allowed jurisdictions per root).
+Under the hood, we use some state-of-the-art tech to make this possible:
+- **Language**: Pure Go for speed and security.
+- **Cryptography**: BN254 curve (for blockchain compatibility).
+- **Proving System**: Groth16 (for small, fast-to-verify proofs).
+- **Hashing**: MiMC (a "ZK-friendly" hash that makes our circuits much smaller and faster).

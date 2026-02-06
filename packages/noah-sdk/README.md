@@ -1,151 +1,109 @@
 # Noah SDK: Privacy-Preserving KYC for Developers
 
-The Noah SDK provides a high-level TypeScript interface for integrating privacy-preserving KYC into your Stacks applications. It handles the complexity of Zero-Knowledge Proof (ZKP) generation, attestation signatures, and on-chain registration while keeping user data private.
+Welcome to the **Noah SDK**. This library is the primary tool for developers to integrate privacy-preserving KYC into Stacks applications. 
+
+Rather than wrestling with Zero-Knowledge circuits or complex cryptography, you can use this SDK to guide your users through a secure identity verification process that respects their privacy.
 
 ---
 
-## 🚀 Getting Started
+##  Understanding the Lifecycle
+
+Integrating Noah isn't just about calling an API; it’s about managing a "User Journey" that spans the real world, our off-chain services, and the blockchain.
+
+### The Two-Phase Flow
+1.  **Identity Issuance**: The user "checks in" with a trusted Attester. Their document is verified (via OCR), and they receive a **Signed ZK-Credential**. This stage happens entirely between the user and the Attester.
+2.  **KYC Registration**: The user takes that credential and generates a **Zero-Knowledge Proof** (using the Prover). This proof is then bundled with an **On-chain Attestation** and registered in the `kyc-registry` contract.
+
+---
+
+##  Getting Started
 
 ### Installation
-
 ```bash
 npm install noah-clarity
 ```
 
 ### Initialization
-
-To start using the SDK, you need to configure the service URLs and the target smart contracts.
+The `NoahSDK` class is your main entry point. It coordinates several specialized services under the hood.
 
 ```typescript
 import { NoahSDK } from 'noah-clarity';
 
-const sdk = new NoahSDK(
-  {
-    kycRegistryAddress: 'ST123...kyc-registry',
-    attesterRegistryAddress: 'ST123...attester-registry',
-    proverServiceUrl: 'https://prover.noah.xyz',
-    attesterServiceUrl: 'https://attester.noah.xyz',
-    network: 'testnet', // 'mainnet' | 'testnet' | 'devnet'
-  },
-  {
-    appName: 'My Awesome DeFi App',
-    appIcon: 'https://myapp.com/logo.png',
-  }
-);
+const sdk = new NoahSDK({
+  kycRegistryAddress: 'ST123...kyc-registry',
+  attesterRegistryAddress: 'ST456...attester-registry',
+  proverServiceUrl: 'http://localhost:8080',
+  attesterServiceUrl: 'http://localhost:8081',
+  network: 'testnet',
+}, {
+  appName: 'My Privacy App',
+  appIcon: 'https://myapp.com/icon.png',
+});
 ```
 
 ---
 
-## 🛠️ How it Works: The Two-Step Flow
+##  Main Developer APIs
 
-Integrating Noah-Clarity involves two distinct phases: **Identity Issuance** and **KYC Registration**.
-
-### Step 1: Identity Issuance (Document Upload)
-First, the user's document is verified by the Attester. This step extracts the identity data via OCR and issues a signed ZK-credential.
+### 1. The Automated KYC Flow
+The simplest way to integrate is using `registerKYC`. This method handles the state machine of proving, attesting, and broadcasting to the blockchain for you.
 
 ```typescript
-// 1. Upload passport image for OCR extraction
-const { data: docInfo } = await sdk.identity.verifyPassport(passportFile);
-
-// 2. Request a signed ZK-credential
-const response = await sdk.identity.issueCredential({
-  user_id: "user-unique-id",
-  user_address: "ST123...",
-  attributes: { ...docInfo },
-  documents: [docInfo],
-});
-```
-
-### Step 2: KYC Registration (Proving & On-Chain)
-Now, use the issued credential to generate a Zero-Knowledge Proof that reveals only what the protocol needs (e.g., "Age > 21") and registers it on-chain.
-
-```typescript
-// The registerKYC method handles ZK-proving and blockchain broadcasting
 const txId = await sdk.registerKYC(
   {
-    ...response.credential, // Use fields from the issued credential
-    min_age: "21",
-    allowed_jurisdictions: ["US", "UK"],
+    ...issuedCredential, // Data received from the Attester in Phase 1
+    min_age: "18",
+    allowed_jurisdictions: ["US", "DE", "FR"],
     require_accreditation: "0",
   },
   userPrivateKey
 );
 ```
 
----
+### 2. Handling Long-Running Jobs
+ZK Proof generation can take ~10-15 seconds. If the user refreshes the page, the SDK remembers where it left off. Use `resumeKYC` on page load to check for interrupted work.
 
-### 2. Built-in Persistence & Resumption
-ZK proof generation can take time. If the user refreshes the page or closes the browser, the SDK automatically persists the current `jobId` to `localStorage`.
-
-You can resume a pending process simply by calling:
 ```typescript
 const resumedTxId = await sdk.resumeKYC(userPrivateKey);
 if (resumedTxId) {
-  console.log("Resumed and completed KYC registration!");
+  console.log("Success! Interrupted KYC has been completed.");
 }
 ```
 
-### 3. Real-time Events
-The SDK emits events at every stage of the lifecycle. This is perfect for updating your UI progress bars or status indicators.
+### 3. Real-time UI Updates
+Don't leave your users staring at a spinner. Use our event system to build a rich progress UI.
 
 ```typescript
 sdk.on('state-changed', (state) => {
-  console.log(`Current Stage: ${state.currentStage}`);
+  // state.currentStage: 'proving' | 'attesting' | 'registering' | 'completed' | 'failed'
+  updateMyProgressBar(state.currentStage);
 });
 
-sdk.on('proof-completed', (result) => {
-  console.log('ZK Proof generated successfully!');
-});
-
-sdk.on('error', (err) => {
-  console.error('Oops!', err.message);
-});
-```
-
-### 4. Privacy-First Blinding
-User nonces (blinding factors) are managed automatically by the `BlindingManager`. This ensures that even if a user performs KYC multiple times, their identity remains un-linkable on-chain.
-
----
-
-## 🎓 Advanced Usage
-
-### Manual Service Access
-If you need more control, you can access the underlying services directly:
-
-- `sdk.contract`: Low-level Stacks contract interactions.
-- `sdk.proof`: Direct ZK-Prover and Attester API calls.
-- `sdk.blinding`: Manage user-specific nonces and commitments.
-
-### Custom Storage
-By default, the SDK uses `BrowserStorage` (indexed to `localStorage`). You can provide your own implementation of `StorageInterface` for Node.js or mobile environments.
-
-```typescript
-const sdk = new NoahSDK({
-  // ...
-  storage: myCustomStorageImplementation,
+sdk.on('tx-broadcasted', ({ txId }) => {
+  showToast(`Transaction submitted: ${txId}`);
 });
 ```
 
 ---
 
-## � API Reference
+##  API Reference
 
 The `NoahSDK` class is the main entry point, exposing specialized services for identity, proofing, and contract interactions.
 
 ### Main SDK (`sdk.*`)
 | Method | Description |
 | :--- | :--- |
-| `registerKYC(req, pk)` | The standard automated flow: Prove -> Attest -> Register. |
-| `resumeKYC(pk)` | Continues an interrupted process from local storage. |
+| `registerKYC(req, pk, opts?)` | The standard automated flow: Prove -> Attest -> Register. |
+| `resumeKYC(pk, opts?)` | Continues an interrupted process from local storage. |
 | `getState()` | Returns the current stage (`proving`, `registering`, etc.). |
 | `resetState()` | Resets the internal state machine to `idle`. |
 | `on(event, cb)` | Subscribes to lifecycle events. |
-| `computeCommitment(data, n, addr)` | Recomputes a MiMC commitment locally. |
+| `computeCommitment(data, n, addr)` | Recomputes a MiMC commitment locally for privacy. |
 
 ### Identity Service (`sdk.identity.*`)
 | Method | Description |
 | :--- | :--- |
-| `verifyPassport(file)` | Uploads image to Attester for OCR extraction. |
+| `verifyPassport(file \| blob)` | Uploads image to Attester for OCR extraction. |
 | `issueCredential(req)` | Requests a signed ZK-credential from the Attester. |
 | `getAttesterInfo()` | Fetches active Attester ID and public key. |
 
@@ -153,8 +111,12 @@ The `NoahSDK` class is the main entry point, exposing specialized services for i
 | Method | Description |
 | :--- | :--- |
 | `generateProof(req)` | Submits a proof generation job to the Prover. |
-| `waitForProof(jobId)` | Polls the Prover service until the ZK proof is ready. |
+| `waitForProof(jobId, int?, timeout?)` | Polls the Prover service until the ZK proof is ready. |
 | `requestAttestation(req)` | Sends a completed ZK proof to the Attester for a signature. |
+| `getPersistedJobId()` | Retrieves active job ID from local storage. |
+| `clearPersistedJob()` | Clears saved job data. |
+| `generateProofForProtocol(cred, reqs)` | Helper to build a proof matching specific protocol requirements. |
+| `verifyPublicInputs(res, expected)` | Validates that a generated proof matches your requirements locally. |
 
 ### Contract Service (`sdk.contract.*`)
 | Method | Description |
@@ -163,15 +125,49 @@ The `NoahSDK` class is the main entry point, exposing specialized services for i
 | `getKYC(principal)` | Returns on-chain registration details (commitment, date). |
 | `isKYCValid(principal)` | Checks if KYC is present AND not revoked. |
 | `revokeKYC(principal, pk)` | Revokes a registration (requires admin/attester rights). |
+| `getContractOwner(registry)` | Returns owner of a specific registry contract. |
+| `transferOwnership(reg, owner, pk)` | Transfers contract management rights. |
+| `addAttester(params, pk)` | Registry management: add a new trusted attester. |
+| `deactivateAttester(id, pk)` | Registry management: deactivate a compromised attester. |
+| `getAttester(id)` | Fetches details and status for a specific attester ID. |
+| `getAllAttesters()` | Returns a list of all registered attester IDs. |
+| `updateRevocationRoot(root, pk)` | Admin: update the Merkle root of revoked identities. |
+| `getRevocationRoot()` | Fetches the current revocation root from the contract. |
+| `getRevocationRootHeight()` | Returns the block height of the last revocation update. |
+| `isCommitmentRevoked(comm)` | Checks our off-chain cache if a commitment is revoked. |
+| `waitForConfirmation(txId)` | Polls Stacks API until a transaction is included in a block. |
 
-### Blinding & Wallet (`sdk.blinding.*` / `sdk.wallet.*`)
+### Blinding Manager (`sdk.blinding.*`)
 | Method | Description |
 | :--- | :--- |
 | `getOrCreateNonce(addr)` | Manages persistent user nonces for privacy. |
+| `setNonce(addr, nonce)` | Explicitly set a nonce (e.g., during recovery). |
+| `clearNonce(addr)` | Remove a nonce (use with caution). |
+
+### Wallet Helper (`sdk.wallet.*`)
+| Method | Description |
+| :--- | :--- |
 | `getUserAddress(session)` | Helper to extract address from Stacks Connect sessions. |
 | `isAuthenticated(session)` | Checks if the user is signed into a wallet. |
+| `getAppName()` | Returns the configured app name. |
 
 ---
 
-## 🛡️ Security
-The Noah SDK performs MiMC commitment computation locally whenever possible to ensure that raw identity data is only shared with the trusted Attester and never touches the Prover or the blockchain.
+##  Security & Privacy
+- **Client-Side Commitment**: Whenever possible, MiMC commitments are computed in the user's browser, meaning raw identity data stays local.
+- **Fail-Soft Discovery**: The SDK coordinates with the Attester to find active identities even under high API load.
+- **Persistent Blinding**: Nonces are stored locally using a secure `StorageInterface` to prevent identity leaks across sessions.
+
+---
+
+##  Event API Reference
+
+| Event | Metadata | Triggered When... |
+| :--- | :--- | :--- |
+| `proof-started` | `{ userAddress, jobId }` | Proving request is sent to the worker. |
+| `proof-completed` | `ProofResult` | ZK proof data is ready. |
+| `attestation-received` | `AttestationResponse` | Attester has signed the proof for on-chain use. |
+| `tx-broadcasted` | `{ txId }` | Registration transaction sent to Stacks. |
+| `tx-confirmed` | `{ txId }` | Transaction confirmed in a Stacks block. |
+| `state-changed` | `KYCLifecycleState` | The high-level stage changes. |
+| `error` | `Error` | Any stage fails with an exception. |
